@@ -292,27 +292,6 @@
     .loading {
       animation: pulse 1.5s infinite;
     }
-
-    /* Sidebar (settings) */
-    .settings-sidebar {
-      position: fixed;
-      top: 0;
-      right: -320px;
-      width: 320px;
-      height: 100%;
-      background: white;
-      box-shadow: -12px 0 24px rgba(0,0,0,0.08);
-      transition: right 0.25s ease;
-      z-index: 1200;
-      padding: 20px;
-    }
-    .settings-sidebar.open { right: 0; }
-    .settings-toggle {
-      position: fixed;
-      right: 20px;
-      bottom: 20px;
-      z-index: 1300;
-    }
   </style>
 </head>
 <body>
@@ -380,15 +359,56 @@
           <video id="preview" controls class="w-full aspect-video rounded-xl bg-gray-900 hidden"></video>
         </div>
 
+        <!-- Segments list (auto-generated after video load) -->
+        <div id="segments" class="max-w-3xl mx-auto mt-4 flex gap-2 flex-wrap"></div>
+        
         <!-- Subtitle overlay -->
         <div id="subtitle" class="max-w-3xl mx-auto mt-2 text-center text-white bg-black/60 p-2 rounded hidden"></div>
       </div>
 
       <!-- Options Grid -->
       <div class="max-w-3xl mx-auto mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="space-y-2">
+          <label for="lang" class="block text-sm font-medium text-gray-700">Language</label>
+          <div class="relative">
+            <select id="lang" class="block w-full pl-3 pr-10 py-2.5 text-gray-900 bg-white border border-gray-200 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+              <option value="ja">Japanese (ja)</option>
+              <option value="en">English (en)</option>
+              <option value="auto" selected>Auto / multilingual</option>
+            </select>
+            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <label for="model" class="block text-sm font-medium text-gray-700">Model Size</label>
+          <div class="relative">
+            <select id="model" class="block w-full pl-3 pr-10 py-2.5 text-gray-900 bg-white border border-gray-200 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+              <option value="Xenova/whisper-tiny.en">tiny.en (fast, english)</option>
+              <option value="Xenova/whisper-tiny">tiny (multilingual, fastest)</option>
+              <option value="Xenova/whisper-base">base (more accurate)</option>
+              <option value="Xenova/whisper-small">small (better, slower)</option>
+            </select>
+            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </div>
+          </div>
+        </div>
+
         <div class="md:col-span-2">
           <div class="flex items-center justify-center space-x-2 p-4 bg-gray-50 rounded-lg">
-            <p class="text-sm text-gray-700">Live subtitles are generated using your browser's microphone while the video plays. Open Settings to adjust options.</p>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input id="isolate" type="checkbox" class="sr-only peer">
+              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300/25 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              <span class="ml-3 text-sm font-medium text-gray-700">Enable Vocal Isolation</span>
+            </label>
+            <span class="text-xs text-gray-500">(Experimental)</span>
           </div>
         </div>
       </div>
@@ -402,12 +422,6 @@
             </svg>
             <span>Start Processing</span>
           </button>
-
-          <!-- Settings toggle (floating) -->
-          <div class="settings-toggle">
-            <button id="openSettings" class="px-3 py-2 bg-white border border-gray-200 rounded-lg shadow-sm">Settings</button>
-          </div>
-
           <div class="flex-1 flex gap-3">
             <button id="downloadAudio" disabled class="flex-1 bg-white hover:bg-gray-50 text-gray-700 px-4 py-3 rounded-lg font-medium transition-all border border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white flex items-center justify-center space-x-2">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500" viewBox="0 0 20 20" fill="currentColor">
@@ -506,41 +520,323 @@
     <p class="text-sm text-gray-500">All processing happens in your browser - no server required</p>
   </footer>
 
-  <!-- Settings Sidebar -->
-  <aside id="settingsSidebar" class="settings-sidebar" aria-hidden="true">
-    <div class="flex items-center justify-between mb-4">
-      <h3 class="text-lg font-semibold">Settings</h3>
-      <button id="closeSettings" class="close-button" aria-label="Close settings">&times;</button>
-    </div>
-
-    <div class="space-y-4">
-      <div>
-        <label class="block text-sm font-medium text-gray-700">Language (SpeechRecognition)</label>
-        <select id="lang" class="block w-full mt-2 px-3 py-2 border rounded">
-          <option value="auto" selected>Auto</option>
-          <option value="en-US">English (en-US)</option>
-          <option value="ja-JP">Japanese (ja-JP)</option>
-        </select>
-      </div>
-
-      <div>
-        <label class="block text-sm font-medium text-gray-700">Vocal Isolation</label>
-        <div class="checkbox-wrapper mt-2">
-          <input id="isolate" type="checkbox" checked />
-          <span class="text-sm">Enable automatic vocal isolation (experimental)</span>
-        </div>
-        <p class="text-xs text-gray-400 mt-2">Vocal isolation will be attempted automatically when available.</p>
-      </div>
-
-      <div>
-        <label class="block text-sm font-medium text-gray-700">Privacy</label>
-        <p class="text-xs text-gray-400">Live transcription uses your browser's SpeechRecognition API — audio is processed locally by the browser.</p>
-      </div>
-    </div>
-  </aside>
-
   <!-- Update script import at the end of body -->
   <script type="module" src="js/main.js"></script>
+
+  <!-- Auto-subtitle prebuffer + Web Speech API transcription (10s segments) -->
+  <script type="module">
+  // filepath: /home/mizui/Workspace/hobby/miraa/index.html (inline module)
+
+  const preview = document.getElementById('preview');
+  const transcriptEl = document.getElementById('transcript');
+  const subtitleEl = document.getElementById('subtitle');
+
+  // segment size in seconds
+  const SEG_LEN = 10;
+
+  // store raw bytes (Uint8Array) and blob for each segment index
+  const segmentBytes = {}; // idx -> Uint8Array
+  const segmentBlobs = {}; // idx -> Blob
+  const segmentTranscripts = {}; // idx -> string
+
+  // Record a segment by creating a hidden video, seeking to start, captureStream and MediaRecorder
+  async function recordSegmentBlob(srcUrl, startSec, durationSec) {
+    // if already recorded, return blob
+    const idxKey = `${startSec.toFixed(3)}`;
+    if (segmentBlobs[idxKey]) return segmentBlobs[idxKey];
+
+    const v = document.createElement('video');
+    v.src = srcUrl;
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = 'auto';
+    v.style.display = 'none';
+    document.body.appendChild(v);
+
+    // wait metadata
+    await new Promise((res, rej) => {
+      const t = setTimeout(() => rej(new Error('Video load timeout')), 10000);
+      v.addEventListener('loadedmetadata', () => { clearTimeout(t); res(); }, { once: true });
+      v.addEventListener('error', () => { clearTimeout(t); rej(new Error('Video load error')); }, { once: true });
+    });
+
+    // seek to start
+    await new Promise((res) => {
+      const onSeek = () => { v.removeEventListener('seeked', onSeek); res(); };
+      v.addEventListener('seeked', onSeek);
+      try { v.currentTime = Math.min(startSec, Math.max(0, v.duration - 0.001)); } catch (e) { res(); }
+      setTimeout(res, 1500);
+    });
+
+    try { await v.play(); } catch (_) { /* some browsers require user interaction; still try */ }
+
+    let stream = null;
+    try { stream = v.captureStream(); } catch (err) {
+      stream = v.mozCaptureStream ? v.mozCaptureStream() : null;
+    }
+    if (!stream) {
+      v.pause(); v.remove();
+      throw new Error('captureStream not supported');
+    }
+
+    const audioTracks = stream.getAudioTracks();
+    if (!audioTracks || audioTracks.length === 0) {
+      v.pause(); v.remove();
+      throw new Error('No audio track available');
+    }
+    const audioStream = new MediaStream(audioTracks);
+
+    let mimeType = '';
+    if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mimeType = 'audio/webm;codecs=opus';
+    else if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
+    else if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
+
+    const recorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
+    const chunks = [];
+    recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+
+    recorder.start();
+
+    // stop after durationSec or when video ends
+    await new Promise((res) => {
+      const stopAfter = setTimeout(() => {
+        try { recorder.stop(); } catch (_) {}
+        res();
+      }, Math.max(100, durationSec * 1000));
+
+      v.addEventListener('ended', () => {
+        clearTimeout(stopAfter);
+        try { recorder.stop(); } catch (_) {}
+        res();
+      }, { once: true });
+    });
+
+    // wait for finalization
+    await new Promise((res) => {
+      recorder.onstop = () => res();
+    });
+
+    const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
+    // store blob and raw bytes
+    const arrayBuffer = await blob.arrayBuffer();
+    const u8 = new Uint8Array(arrayBuffer);
+    segmentBytes[idxKey] = u8;
+    segmentBlobs[idxKey] = blob;
+
+    // cleanup
+    v.pause();
+    v.remove();
+
+    return blob;
+  }
+
+  // Transcribe a blob by playing it and using Web Speech Recognition to listen while it plays.
+  // Note: SpeechRecognition listens from microphone; this method plays the audio so recognition can pick it up.
+  async function transcribeBlobViaSpeechRecognition(blob, lang = 'en-US', timeoutMs = 20000) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) throw new Error('SpeechRecognition not supported');
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.crossOrigin = 'anonymous';
+      audio.volume = 1.0;
+
+      let finalText = '';
+      let interimText = '';
+
+      const recognition = new SpeechRecognition();
+      try { recognition.lang = lang; } catch (_) {}
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      let finished = false;
+      const cleanup = () => {
+        try { recognition.stop(); } catch (_) {}
+        try { audio.pause(); } catch (_) {}
+        URL.revokeObjectURL(url);
+      };
+
+      recognition.onresult = (event) => {
+        interimText = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const r = event.results[i];
+          if (r.isFinal) {
+            finalText += r[0].transcript + ' ';
+          } else {
+            interimText += r[0].transcript + ' ';
+          }
+        }
+        // show interim in transcript area while processing
+        transcriptEl.textContent = (finalText + interimText).trim();
+      };
+
+      recognition.onerror = (ev) => {
+        console.warn('SpeechRecognition error', ev);
+      };
+
+      recognition.onend = () => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        resolve((finalText || '').trim());
+      };
+
+      // start recognition then play
+      try {
+        recognition.start();
+      } catch (err) {
+        cleanup();
+        reject(err);
+        return;
+      }
+
+      audio.play().catch((err) => {
+        console.warn('audio.play failed', err);
+        // still wait for recognition events
+      });
+
+      // safety timeout
+      setTimeout(() => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        resolve((finalText || '').trim());
+      }, timeoutMs);
+    });
+  }
+
+  // Helper: render subtitle words uniformly for a given transcript and segment duration
+  function renderSubtitleForSegmentText(text, segStart, segDuration) {
+    if (!text) {
+      subtitleEl.classList.add('hidden');
+      subtitleEl.innerHTML = '';
+      return;
+    }
+    const words = text.trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      subtitleEl.classList.add('hidden');
+      subtitleEl.innerHTML = '';
+      return;
+    }
+    subtitleEl.classList.remove('hidden');
+    subtitleEl.innerHTML = words.map((w,i)=>`<span data-word="${i}" style="opacity:0.6">${escapeHtml(w)}</span>`).join(' ');
+    // attach timeupdate handler to highlight across segDuration when video is playing over that segStart
+    function onTime() {
+      const t = preview.currentTime;
+      const elapsed = Math.max(0, t - segStart);
+      const ratio = Math.min(1, segDuration ? (elapsed/segDuration) : 0);
+      const upto = Math.floor((words.length || 1) * ratio);
+      const spans = subtitleEl.querySelectorAll('span[data-word]');
+      spans.forEach(s => {
+        const idx = Number(s.getAttribute('data-word'));
+        s.style.opacity = idx < upto ? '1' : '0.6';
+        s.style.fontWeight = idx < upto ? '700' : '400';
+      });
+      // If playback left this segment, remove handler
+      if (t < segStart - 0.05 || t > segStart + segDuration + 0.05) {
+        preview.removeEventListener('timeupdate', onTime);
+      }
+    }
+    // remove any previous and add fresh
+    preview.addEventListener('timeupdate', onTime);
+    // run once to initialize
+    onTime();
+  }
+
+  // escape HTML
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
+
+  // compute segment index from time
+  function segIndexFromTime(t) { return Math.floor(t / SEG_LEN); }
+
+  // when video metadata loaded, create segments (no heavy recording yet)
+  preview.addEventListener('loadedmetadata', () => {
+    // nothing heavy here; we will record lazily
+    const total = preview.duration || 0;
+    const count = Math.ceil(total / SEG_LEN);
+    // show initial placeholder subtitle for first segment (pre-create one segment transcript early)
+    if (count > 0) {
+      prefetchAndTranscribeSegment(0); // start transcribing first segment early
+    }
+  });
+
+  // When playback enters a new segment, show available subtitles and pre-transcribe the next segment
+  let lastShownSegment = -1;
+  preview.addEventListener('timeupdate', async () => {
+    const t = preview.currentTime;
+    const idx = segIndexFromTime(t);
+    if (idx !== lastShownSegment) {
+      lastShownSegment = idx;
+      const segStart = idx * SEG_LEN;
+      const segDur = Math.min(SEG_LEN, (preview.duration || 0) - segStart);
+      const key = `${segStart.toFixed(3)}`;
+
+      // If transcript ready, render it
+      if (segmentTranscripts[key]) {
+        renderSubtitleForSegmentText(segmentTranscripts[key], segStart, segDur);
+      } else {
+        // show "Processing..." placeholder while it's being produced
+        subtitleEl.classList.remove('hidden');
+        subtitleEl.innerHTML = `<span style="opacity:0.8">[Processing segment ${idx+1}...]</span>`;
+        // ensure prefetch for this segment is started
+        prefetchAndTranscribeSegment(idx);
+      }
+
+      // prefetch next segment (10s early)
+      prefetchAndTranscribeSegment(idx + 1);
+    }
+  });
+
+  // Prefetch and transcribe specified segment index (if within duration)
+  async function prefetchAndTranscribeSegment(idx) {
+    const total = preview.duration || 0;
+    const segStart = idx * SEG_LEN;
+    if (segStart >= total || idx < 0) return;
+    const segDur = Math.min(SEG_LEN, total - segStart);
+    const key = `${segStart.toFixed(3)}`;
+    if (segmentTranscripts[key]) return; // already have transcript
+    try {
+      // ensure we have blob/bytes
+      let blob = segmentBlobs[key];
+      if (!blob) {
+        const srcUrl = preview.currentSrc || preview.src;
+        blob = await recordSegmentBlob(srcUrl, segStart, segDur);
+      }
+      // store bytes if not set
+      if (!segmentBytes[key]) {
+        const ab = await blob.arrayBuffer();
+        segmentBytes[key] = new Uint8Array(ab);
+      }
+      // transcribe using Web Speech API (requires mic permission)
+      // choose language from UI
+      const lang = (document.getElementById('lang') && document.getElementById('lang').value) || 'en-US';
+      const result = await transcribeBlobViaSpeechRecognition(blob, (lang === 'auto' ? 'en-US' : lang), Math.ceil(segDur * 1000) + 8000);
+      segmentTranscripts[key] = result || '[no speech detected]';
+      // If current video time is within this segment, immediately render
+      const curT = preview.currentTime;
+      if (curT >= segStart && curT <= segStart + segDur + 0.05) {
+        renderSubtitleForSegmentText(segmentTranscripts[key], segStart, segDur);
+      }
+      // also append to main transcript area (append with segment time)
+      const stamp = new Date().toISOString();
+      transcriptEl.textContent = transcriptEl.textContent + `\n[${segStart.toFixed(1)}s] ${segmentTranscripts[key]}`;
+    } catch (err) {
+      console.warn('prefetch/transcribe failed for segment', idx, err);
+      // mark as failed to avoid retry storm
+      segmentTranscripts[key] = '[transcription failed]';
+      transcriptEl.textContent = transcriptEl.textContent + `\n[${segStart.toFixed(1)}s] [transcription failed]`;
+    }
+  }
+
+  // NOTE: Web Speech API listens to microphone; to transcribe audio played by the page
+  // the browser will capture the played audio via the system mic. There is no standard
+  // SpeechRecognition API method to feed raw audio bytes directly.
+  // This implementation records audio bytes (Uint8Array) and plays them back while
+  // SpeechRecognition listens so it can produce transcripts. The user must allow microphone permission.
+
+  </script>
+
 </body>
 </html>
 
