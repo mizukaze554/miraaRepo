@@ -118,12 +118,35 @@ const downloadTranscriptBtn = document.getElementById("downloadTranscript");
 let latestAudioBlob = null;
 let latestTranscriptText = "";
 
-fileEl.addEventListener("change", (ev) => {
+fileEl.addEventListener("change", async (ev) => {
   const f = ev.target.files?.[0];
   if (!f) return;
-  preview.src = URL.createObjectURL(f);
-  preview.style.display = "block";
-  transcriptEl.textContent = "—";
+  
+  // Check file size (optional, set to 500MB)
+  const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB in bytes
+  if (f.size > MAX_FILE_SIZE) {
+    alert("File is too large. Please choose a file under 500MB.");
+    fileEl.value = ''; // Reset file input
+    return;
+  }
+
+  try {
+    const url = URL.createObjectURL(f);
+    preview.src = url;
+    preview.style.display = "block";
+    transcriptEl.textContent = "—";
+    
+    // Verify the video is loadable
+    await new Promise((resolve, reject) => {
+      preview.onloadeddata = resolve;
+      preview.onerror = () => reject(new Error('Failed to load video'));
+    });
+  } catch (error) {
+    console.error('Video loading error:', error);
+    alert('Error loading video. Please try a different file.');
+    fileEl.value = '';
+    preview.style.display = "none";
+  }
 });
 
 // progress helpers
@@ -325,18 +348,42 @@ startBtn.addEventListener("click", async () => {
   try {
     await ensureFFmpegLoaded();
 
-    // write file to ffmpeg FS
+    // write file to ffmpeg FS with chunking for large files
     const inputName = "input_vid";
     const inputExt = f.name.split('.').pop() || 'mp4';
     const inputFileName = `${inputName}.${inputExt}`;
-    setStatus("Writing video to ffmpeg FS...", 16);
-    ffmpeg.FS('writeFile', inputFileName, await fetchFile(f));
+    
+    setStatus("Processing video file...", 16);
+    
+    try {
+      // Convert file to buffer
+      const fileData = await fetchFile(f);
+      if (!fileData || !(fileData instanceof Uint8Array)) {
+        throw new Error('Invalid file data');
+      }
+      
+      setStatus("Writing video to ffmpeg...", 18);
+      ffmpeg.FS('writeFile', inputFileName, fileData);
 
-    // Extract audio as stereo WAV (we keep stereo so isolation can work). We'll use 44100 to preserve quality.
-    const outAudioName = "extracted.wav";
-    setStatus("Extracting audio via ffmpeg...", 20);
-    // -vn no video, -ac 2 stereo, -ar 44100 sample rate, pcm_s16le
-    await ffmpeg.run("-y", "-i", inputFileName, "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2", outAudioName);
+      // Extract audio as stereo WAV (we keep stereo so isolation can work). We'll use 44100 to preserve quality.
+      const outAudioName = "extracted.wav";
+      setStatus("Extracting audio via ffmpeg...", 20);
+      // Add -t 7200 to limit to 2 hours max, -vn no video, -ac 2 stereo, -ar 44100 sample rate, pcm_s16le
+      await ffmpeg.run(
+        "-y",
+        "-i", inputFileName,
+        "-t", "7200",
+        "-vn",
+        "-acodec", "pcm_s16le",
+        "-ar", "44100",
+        "-ac", "2",
+        outAudioName
+      );
+    } catch (error) {
+      console.error('FFmpeg processing error:', error);
+      setStatus("Error processing video: " + (error?.message || String(error)), 0);
+      throw error;
+    }
 
     // Read output
     setStatus("Reading extracted audio...", 36);
