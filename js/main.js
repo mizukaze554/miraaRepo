@@ -648,7 +648,7 @@ document.addEventListener('DOMContentLoaded', () => {
       };
 
       // Minimal transcript placeholder (actual ASR integration can be added on demand)
-      transcriptText = 'Audio extracted. To generate transcript, enable in-browser ASR (optional).';
+      transcriptText = 'Audio extracted. Starting automatic transcription for first segment...';
       transcriptEl.textContent = transcriptText;
       downloadTranscriptBtn.disabled = false;
       downloadTranscriptBtn.onclick = () => {
@@ -665,6 +665,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
       setProgress(100);
       setStatus('Done', 'success');
+      // Auto-transcribe first segment (compute segments if missing)
+      try {
+        if (!segments || segments.length === 0) {
+          // ensure we have metadata; compute from preview.duration if available
+          const dur = preview.duration && isFinite(preview.duration) ? preview.duration : null;
+          if (dur) computeSegments(dur);
+        }
+        if (segments && segments.length > 0) {
+          setStatus('Auto-transcribing first segment...', 'loading');
+          setProgress(5);
+          await transcribeSegment(0);
+        } else {
+          // no segments available; leave placeholder
+          setStatus('Ready (no segments)', 'warning');
+        }
+      } catch (autoErr) {
+        console.warn('Auto-transcription failed', autoErr);
+        setStatus('Auto-transcription failed', 'error');
+      }
     } catch (err) {
       console.error(err);
       alert('Processing failed. See console for details.');
