@@ -102,6 +102,58 @@
   - @xenova/transformers (Transformers.js / Xenova)
 */
 
+// ---------- IndexedDB Setup ----------
+const DB_NAME = 'videoTranscriptDB';
+const DB_VERSION = 1;
+let db;
+
+async function initDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      db = request.result;
+      resolve(db);
+    };
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains('transcripts')) {
+        db.createObjectStore('transcripts', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('audioData')) {
+        db.createObjectStore('audioData', { keyPath: 'id' });
+      }
+    };
+  });
+}
+
+// Initialize IndexedDB
+initDB().catch(console.error);
+
+async function saveToIndexedDB(storeName, data) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([storeName], 'readwrite');
+    const store = transaction.objectStore(storeName);
+    const request = store.put(data);
+    
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function getFromIndexedDB(storeName, id) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([storeName], 'readonly');
+    const store = transaction.objectStore(storeName);
+    const request = store.get(id);
+    
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
 // ---------- Helper UI ----------
 const fileEl = document.getElementById("videoFile");
 const preview = document.getElementById("preview");
@@ -364,9 +416,12 @@ async function transcribeAudioBlob(transcriber, audioBlob, langOption) {
 }
 
 // ---------- Main flow ----------
-startBtn.addEventListener("click", async () => {
+async function processVideo() {
   const f = fileEl.files?.[0];
-  if (!f) { alert("Please choose a video file first."); return; }
+  if (!f) { 
+    alert("Please choose a video file first."); 
+    return; 
+  }
 
   startBtn.disabled = true;
   setStatus("Starting process...", 2);
@@ -382,6 +437,9 @@ startBtn.addEventListener("click", async () => {
     
     setStatus("Processing video file...", 16);
     
+    const outAudioName = "extracted.wav";
+    const tempFiles = [];
+
     try {
       // Convert file to buffer
       const fileData = await fetchFile(f);
@@ -391,9 +449,8 @@ startBtn.addEventListener("click", async () => {
       
       setStatus("Writing video to ffmpeg...", 18);
       ffmpeg.FS('writeFile', inputFileName, fileData);
+      tempFiles.push(inputFileName);
 
-      // Extract audio as stereo WAV (we keep stereo so isolation can work). We'll use 44100 to preserve quality.
-      const outAudioName = "extracted.wav";
       setStatus("Extracting audio via ffmpeg...", 20);
       // Add -t 7200 to limit to 2 hours max, -vn no video, -ac 2 stereo, -ar 44100 sample rate, pcm_s16le
       await ffmpeg.run(
@@ -406,9 +463,18 @@ startBtn.addEventListener("click", async () => {
         "-ac", "2",
         outAudioName
       );
+      tempFiles.push(outAudioName);
     } catch (error) {
       console.error('FFmpeg processing error:', error);
       setStatus("Error processing video: " + (error?.message || String(error)), 0);
+      // Clean up any temporary files
+      for (const file of tempFiles) {
+        try {
+          ffmpeg.FS('unlink', file);
+        } catch (e) {
+          console.warn('Failed to clean up file:', file, e);
+        }
+      }
       throw error;
     }
 
@@ -426,15 +492,47 @@ startBtn.addEventListener("click", async () => {
 
     // create blob and keep for download
     latestAudioBlob = new Blob([processedAudioBuffer], { type: "audio/wav" });
-    downloadAudioBtn.disabled = false;
-    downloadAudioBtn.onclick = () => {
-      const url = URL.createObjectURL(latestAudioBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${f.name.replace(/\.[^/.]+$/, "")}_audio.wav`;
-      a.click();
-      URL.revokeObjectURL(url);
-    };
+    
+    // Save to IndexedDB
+    const audioId = `audio_${Date.now()}`;
+    try {
+      await saveToIndexedDB('audioData', {
+        id: audioId,
+        fileName: f.name,
+        blob: latestAudioBlob,
+        timestamp: Date.now()
+      });
+
+      downloadAudioBtn.disabled = false;
+      downloadAudioBtn.onclick = async () => {
+        try {
+          const audioData = await getFromIndexedDB('audioData', audioId);
+          if (audioData) {
+            const url = URL.createObjectURL(audioData.blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${audioData.fileName.replace(/\.[^/.]+$/, "")}_audio.wav`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }
+        } catch (error) {
+          console.error('Error downloading audio:', error);
+          alert('Error downloading audio. Please try processing the video again.');
+        }
+      };
+    } catch (error) {
+      console.error('Error saving audio to IndexedDB:', error);
+      // Fall back to direct blob handling if IndexedDB fails
+      downloadAudioBtn.disabled = false;
+      downloadAudioBtn.onclick = () => {
+        const url = URL.createObjectURL(latestAudioBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${f.name.replace(/\.[^/.]+$/, "")}_audio.wav`;
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+    }
 
     // load model and transcribe
     // Choose model based on user selection. If language = en and user selected tiny.en, that's ideal.
@@ -444,16 +542,49 @@ startBtn.addEventListener("click", async () => {
     const text = await transcribeAudioBlob(transcriber, latestAudioBlob, langEl.value);
     latestTranscriptText = text;
     transcriptEl.textContent = text || "(no text detected)";
-    downloadTranscriptBtn.disabled = false;
-    downloadTranscriptBtn.onclick = () => {
-      const blob = new Blob([latestTranscriptText], { type: "text/plain;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${f.name.replace(/\.[^/.]+$/, "")}_transcript.txt`;
-      a.click();
-      URL.revokeObjectURL(url);
-    };
+
+    // Save transcript to IndexedDB
+    const transcriptId = `transcript_${Date.now()}`;
+    try {
+      await saveToIndexedDB('transcripts', {
+        id: transcriptId,
+        fileName: f.name,
+        text: text,
+        timestamp: Date.now()
+      });
+
+      downloadTranscriptBtn.disabled = false;
+      downloadTranscriptBtn.onclick = async () => {
+        try {
+          const transcriptData = await getFromIndexedDB('transcripts', transcriptId);
+          if (transcriptData) {
+            const blob = new Blob([transcriptData.text], { type: "text/plain;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${transcriptData.fileName.replace(/\.[^/.]+$/, "")}_transcript.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }
+        } catch (error) {
+          console.error('Error downloading transcript:', error);
+          alert('Error downloading transcript. Please try processing the video again.');
+        }
+      };
+    } catch (error) {
+      console.error('Error saving transcript to IndexedDB:', error);
+      // Fall back to direct text handling if IndexedDB fails
+      downloadTranscriptBtn.disabled = false;
+      downloadTranscriptBtn.onclick = () => {
+        const blob = new Blob([latestTranscriptText], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${f.name.replace(/\.[^/.]+$/, "")}_transcript.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+    }
 
     setStatus("Done ✅", 100);
   } catch (err) {
@@ -464,7 +595,11 @@ startBtn.addEventListener("click", async () => {
   } finally {
     startBtn.disabled = false;
   }
-});
+}
+
+// Initialize process
+startBtn.addEventListener("click", processVideo);
+
 </script>
 </body>
 </html>
