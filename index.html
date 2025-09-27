@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
   <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data: https://cdn.jsdelivr.net https://esm.sh https://unpkg.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://cdn.jsdelivr.net https://esm.sh https://unpkg.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self' blob: https://cdn.jsdelivr.net https://esm.sh https://unpkg.com https://api-inference.huggingface.co; img-src 'self' blob: data:; media-src blob: 'self'; style-src-elem 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src-attr 'unsafe-inline';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data: https://cdn.jsdelivr.net https://esm.sh https://unpkg.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://cdn.jsdelivr.net https://esm.sh https://unpkg.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self' blob: https://cdn.jsdelivr.net https://esm.sh https://unpkg.com; img-src 'self' blob: data:; media-src blob: 'self'; style-src-elem 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src-attr 'unsafe-inline';" />
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <style>
     :root {
@@ -292,6 +292,27 @@
     .loading {
       animation: pulse 1.5s infinite;
     }
+
+    /* Sidebar (settings) */
+    .settings-sidebar {
+      position: fixed;
+      top: 0;
+      right: -320px;
+      width: 320px;
+      height: 100%;
+      background: white;
+      box-shadow: -12px 0 24px rgba(0,0,0,0.08);
+      transition: right 0.25s ease;
+      z-index: 1200;
+      padding: 20px;
+    }
+    .settings-sidebar.open { right: 0; }
+    .settings-toggle {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 1300;
+    }
   </style>
 </head>
 <body>
@@ -359,75 +380,15 @@
           <video id="preview" controls class="w-full aspect-video rounded-xl bg-gray-900 hidden"></video>
         </div>
 
-        <!-- Segments list (auto-generated after video load) -->
-        <div id="segments" class="max-w-3xl mx-auto mt-4 flex gap-2 flex-wrap"></div>
-        
         <!-- Subtitle overlay -->
         <div id="subtitle" class="max-w-3xl mx-auto mt-2 text-center text-white bg-black/60 p-2 rounded hidden"></div>
       </div>
 
       <!-- Options Grid -->
       <div class="max-w-3xl mx-auto mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div class="space-y-2">
-          <label for="lang" class="block text-sm font-medium text-gray-700">Language</label>
-          <div class="relative">
-            <select id="lang" class="block w-full pl-3 pr-10 py-2.5 text-gray-900 bg-white border border-gray-200 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-              <option value="ja">Japanese (ja)</option>
-              <option value="en">English (en)</option>
-              <option value="auto" selected>Auto / multilingual</option>
-            </select>
-            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
-              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <div class="space-y-2">
-          <label for="model" class="block text-sm font-medium text-gray-700">Model Size</label>
-          <div class="relative">
-            <select id="model" class="block w-full pl-3 pr-10 py-2.5 text-gray-900 bg-white border border-gray-200 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-              <option value="Xenova/whisper-tiny.en">tiny.en (fast, english)</option>
-              <option value="Xenova/whisper-tiny">tiny (multilingual, fastest)</option>
-              <option value="Xenova/whisper-base">base (more accurate)</option>
-              <option value="Xenova/whisper-small">small (better, slower)</option>
-            </select>
-            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
-              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <div class="space-y-2">
-          <label for="hfToggle" class="block text-sm font-medium text-gray-700">Hugging Face Inference</label>
-          <div class="flex gap-2 items-center">
-            <label class="inline-flex items-center gap-2">
-              <input id="useHf" type="checkbox" class="h-4 w-4" />
-              <span class="text-sm">Use HF Inference API</span>
-            </label>
-            <input id="hfToken" type="password" placeholder="HF API token (optional)" class="flex-1 px-3 py-2 rounded-lg border border-gray-200" />
-          </div>
-          <div class="relative">
-            <select id="hfModel" class="block w-full pl-3 pr-10 py-2.5 text-gray-900 bg-white border border-gray-200 rounded-lg">
-              <option value="openai/whisper-small">whisper-small (recommended)</option>
-              <option value="openai/whisper-medium">whisper-medium</option>
-              <option value="openai/whisper-large-v2">whisper-large-v2</option>
-            </select>
-          </div>
-          <p class="text-xs text-gray-400">If using HF Inference, provide a token and enable the checkbox. Model selection affects accuracy & cost.</p>
-        </div>
-
         <div class="md:col-span-2">
           <div class="flex items-center justify-center space-x-2 p-4 bg-gray-50 rounded-lg">
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input id="isolate" type="checkbox" class="sr-only peer">
-              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300/25 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              <span class="ml-3 text-sm font-medium text-gray-700">Enable Vocal Isolation</span>
-            </label>
-            <span class="text-xs text-gray-500">(Experimental)</span>
+            <p class="text-sm text-gray-700">Live subtitles are generated using your browser's microphone while the video plays. Open Settings to adjust options.</p>
           </div>
         </div>
       </div>
@@ -441,6 +402,12 @@
             </svg>
             <span>Start Processing</span>
           </button>
+
+          <!-- Settings toggle (floating) -->
+          <div class="settings-toggle">
+            <button id="openSettings" class="px-3 py-2 bg-white border border-gray-200 rounded-lg shadow-sm">Settings</button>
+          </div>
+
           <div class="flex-1 flex gap-3">
             <button id="downloadAudio" disabled class="flex-1 bg-white hover:bg-gray-50 text-gray-700 px-4 py-3 rounded-lg font-medium transition-all border border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white flex items-center justify-center space-x-2">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500" viewBox="0 0 20 20" fill="currentColor">
@@ -539,16 +506,40 @@
     <p class="text-sm text-gray-500">All processing happens in your browser - no server required</p>
   </footer>
 
-  <!-- Update script import at the end of body -->
-  <script type="module" src="js/main.js"></script>
-</body>
-</html>
-      "@ffmpeg/ffmpeg": "https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/esm/index.js",
-      "@ffmpeg/util": "https://unpkg.com/@ffmpeg/util@0.12.0/dist/esm/index.js",
-      "@xenova/transformers": "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/+esm"
-  </script>
+  <!-- Settings Sidebar -->
+  <aside id="settingsSidebar" class="settings-sidebar" aria-hidden="true">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-semibold">Settings</h3>
+      <button id="closeSettings" class="close-button" aria-label="Close settings">&times;</button>
+    </div>
 
-  <!-- Update script imports at the end of body -->
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Language (SpeechRecognition)</label>
+        <select id="lang" class="block w-full mt-2 px-3 py-2 border rounded">
+          <option value="auto" selected>Auto</option>
+          <option value="en-US">English (en-US)</option>
+          <option value="ja-JP">Japanese (ja-JP)</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Vocal Isolation</label>
+        <div class="checkbox-wrapper mt-2">
+          <input id="isolate" type="checkbox" checked />
+          <span class="text-sm">Enable automatic vocal isolation (experimental)</span>
+        </div>
+        <p class="text-xs text-gray-400 mt-2">Vocal isolation will be attempted automatically when available.</p>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Privacy</label>
+        <p class="text-xs text-gray-400">Live transcription uses your browser's SpeechRecognition API — audio is processed locally by the browser.</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Update script import at the end of body -->
   <script type="module" src="js/main.js"></script>
 </body>
 </html>
