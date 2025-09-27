@@ -150,7 +150,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // create hidden video element to drive captureStream
     const v = document.createElement('video');
     v.style.display = 'none';
-    v.muted = true;
+    // don't use muted=true here — some browsers won't expose audio tracks when muted.
+    // keep the audio silent by setting volume to 0 but leaving muted false so captureStream sees audio.
+    v.muted = false;
+    v.volume = 0;
     v.playsInline = true;
     v.src = fileUrl;
     document.body.appendChild(v);
@@ -166,14 +169,27 @@ document.addEventListener('DOMContentLoaded', () => {
     setProgress(15);
     setStatus('Starting capture...');
 
-    // captureStream may only produce stream when video is playing; create before play
+    // Start playback first so captureStream will include audio tracks on most browsers
+    try {
+      await v.play();
+    } catch (err) {
+      v.remove();
+      URL.revokeObjectURL(fileUrl);
+      throw err;
+    }
+    
     let stream;
     try {
       stream = v.captureStream();
     } catch (err) {
       // older browsers: try captureStream with fallback
       stream = v.mozCaptureStream ? v.mozCaptureStream() : null;
-      if (!stream) throw new Error('captureStream not supported in this browser');
+      if (!stream) {
+        v.pause();
+        v.remove();
+        URL.revokeObjectURL(fileUrl);
+        throw new Error('captureStream not supported in this browser');
+      }
     }
 
     // pick an audio mimeType supported by MediaRecorder
@@ -194,6 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Use only audio tracks for MediaRecorder (video track causes "audio type" errors)
     const audioTracks = stream.getAudioTracks();
     if (!audioTracks || audioTracks.length === 0) {
+      v.pause();
       v.remove();
       URL.revokeObjectURL(fileUrl);
       throw new Error('No audio track found in the video.');
@@ -209,14 +226,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setProgress(25);
 
     recorder.start();
-    // ensure play starts (user clicked Start so gesture exists)
-    await v.play().catch(err => {
-      recorder.stop();
-      v.remove();
-      URL.revokeObjectURL(fileUrl);
-      throw err;
-    });
-
     // Wait until video ends
     await new Promise((res, rej) => {
       v.addEventListener('ended', res, { once: true });
