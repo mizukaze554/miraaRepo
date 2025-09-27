@@ -525,23 +525,28 @@
 
   <!-- Auto-subtitle prebuffer + Web Speech API transcription (10s segments) -->
   <script type="module">
-  // filepath: /home/mizui/Workspace/hobby/miraa/index.html (inline module)
-
   const preview = document.getElementById('preview');
   const transcriptEl = document.getElementById('transcript');
   const subtitleEl = document.getElementById('subtitle');
+  const statusEl = document.getElementById('status');
+  const progEl = document.getElementById('prog');
+  const downloadAudioBtn = document.getElementById('downloadAudio');
+  const downloadTranscriptBtn = document.getElementById('downloadTranscript');
 
   // segment size in seconds
   const SEG_LEN = 10;
 
   // store raw bytes (Uint8Array) and blob for each segment index
-  const segmentBytes = {}; // idx -> Uint8Array
-  const segmentBlobs = {}; // idx -> Blob
-  const segmentTranscripts = {}; // idx -> string
+  const segmentBytes = {}; // idxKey -> Uint8Array
+  const segmentBlobs = {}; // idxKey -> Blob
+  const segmentTranscripts = {}; // idxKey -> string
+
+  // background controller flags
+  let bgStopRequested = false;
+  let bgRunning = false;
 
   // Record a segment by creating a hidden video, seeking to start, captureStream and MediaRecorder
   async function recordSegmentBlob(srcUrl, startSec, durationSec) {
-    // if already recorded, return blob
     const idxKey = `${startSec.toFixed(3)}`;
     if (segmentBlobs[idxKey]) return segmentBlobs[idxKey];
 
@@ -631,7 +636,6 @@
   }
 
   // Transcribe a blob by playing it and using Web Speech Recognition to listen while it plays.
-  // Note: SpeechRecognition listens from microphone; this method plays the audio so recognition can pick it up.
   async function transcribeBlobViaSpeechRecognition(blob, lang = 'en-US', timeoutMs = 20000) {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) throw new Error('SpeechRecognition not supported');
@@ -721,7 +725,6 @@
     }
     subtitleEl.classList.remove('hidden');
     subtitleEl.innerHTML = words.map((w,i)=>`<span data-word="${i}" style="opacity:0.6">${escapeHtml(w)}</span>`).join(' ');
-    // attach timeupdate handler to highlight across segDuration when video is playing over that segStart
     function onTime() {
       const t = preview.currentTime;
       const elapsed = Math.max(0, t - segStart);
@@ -733,35 +736,151 @@
         s.style.opacity = idx < upto ? '1' : '0.6';
         s.style.fontWeight = idx < upto ? '700' : '400';
       });
-      // If playback left this segment, remove handler
       if (t < segStart - 0.05 || t > segStart + segDuration + 0.05) {
         preview.removeEventListener('timeupdate', onTime);
       }
     }
-    // remove any previous and add fresh
     preview.addEventListener('timeupdate', onTime);
-    // run once to initialize
     onTime();
   }
 
-  // escape HTML
   function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
-
-  // compute segment index from time
   function segIndexFromTime(t) { return Math.floor(t / SEG_LEN); }
 
-  // when video metadata loaded, create segments (no heavy recording yet)
+  // Modified: returns the produced transcript string
+  async function prefetchAndTranscribeSegment(idx) {
+    const total = preview.duration || 0;
+    const segStart = idx * SEG_LEN;
+    if (segStart >= total || idx < 0) return null;
+    const segDur = Math.min(SEG_LEN, total - segStart);
+    const key = `${segStart.toFixed(3)}`;
+    if (segmentTranscripts[key]) return segmentTranscripts[key]; // already have transcript
+    try {
+      // ensure we have blob/bytes
+      let blob = segmentBlobs[key];
+      if (!blob) {
+        const srcUrl = preview.currentSrc || preview.src;
+        blob = await recordSegmentBlob(srcUrl, segStart, segDur);
+      }
+      if (!segmentBytes[key]) {
+        const ab = await blob.arrayBuffer();
+        segmentBytes[key] = new Uint8Array(ab);
+      }
+      // transcribe using Web Speech API
+      const langVal = (document.getElementById('lang') && document.getElementById('lang').value) || 'en';
+      // map UI value to SpeechRecognition lang tag
+      const langTag = (langVal === 'auto') ? 'en-US' : (langVal === 'ja' ? 'ja-JP' : (langVal === 'en' ? 'en-US' : langVal));
+      const result = await transcribeBlobViaSpeechRecognition(blob, langTag, Math.ceil(segDur * 1000) + 8000);
+      segmentTranscripts[key] = result || '[no speech detected]';
+
+      // If current video time is within this segment, immediately render
+      const curT = preview.currentTime;
+      if (curT >= segStart && curT <= segStart + segDur + 0.05) {
+        renderSubtitleForSegmentText(segmentTranscripts[key], segStart, segDur);
+      }
+      // append to main transcript area (append with segment time)
+      transcriptEl.textContent = transcriptEl.textContent + `\n[${segStart.toFixed(1)}s] ${segmentTranscripts[key]}`;
+      return segmentTranscripts[key];
+    } catch (err) {
+      console.warn('prefetch/transcribe failed for segment', idx, err);
+      segmentTranscripts[key] = '[transcription failed]';
+      transcriptEl.textContent = transcriptEl.textContent + `\n[${segStart.toFixed(1)}s] [transcription failed]`;
+      return segmentTranscripts[key];
+    }
+  }
+
+  // background sequential transcription while playing
+  async function startBackgroundTranscription() {
+    if (bgRunning) return;
+    bgRunning = true;
+    bgStopRequested = false;
+    statusEl.textContent = 'Transcribing';
+    try {
+      const total = preview.duration || 0;
+      const totalSegments = Math.ceil(total / SEG_LEN);
+      let idx = segIndexFromTime(preview.currentTime);
+      // make sure we have a starting placeholder in transcript
+      if (!segmentTranscripts[`${(idx*SEG_LEN).toFixed(3)}`]) {
+        // kick off the current segment immediately (no await) to let subtitle show
+        prefetchAndTranscribeSegment(idx).catch(()=>{});
+      }
+      // sequentially process remaining segments until end or when stop requested
+      for (; idx < totalSegments; idx++) {
+        if (bgStopRequested) break;
+        const key = `${(idx*SEG_LEN).toFixed(3)}`;
+        if (!segmentTranscripts[key]) {
+          await prefetchAndTranscribeSegment(idx);
+        }
+        // update progress UI
+        updateProgressUI();
+      }
+      // final UI update
+      updateProgressUI();
+      if (!bgStopRequested) {
+        statusEl.textContent = 'Idle';
+      } else {
+        statusEl.textContent = 'Paused';
+      }
+    } finally {
+      bgRunning = false;
+    }
+  }
+
+  function updateProgressUI() {
+    const total = preview.duration || 0;
+    if (!total || !isFinite(total) || total <= 0) {
+      progEl.style.width = '0%';
+      return;
+    }
+    const totalSegments = Math.ceil(total / SEG_LEN);
+    let done = 0;
+    for (let i = 0; i < totalSegments; i++) {
+      const key = `${(i*SEG_LEN).toFixed(3)}`;
+      if (segmentTranscripts[key]) done++;
+    }
+    const pct = Math.round((done / totalSegments) * 100);
+    progEl.style.width = `${pct}%`;
+    statusEl.textContent = done >= totalSegments ? 'Completed' : `Transcribing (${done}/${totalSegments})`;
+    // enable download when complete
+    if (done >= totalSegments && totalSegments > 0) {
+      downloadTranscriptBtn.disabled = false;
+      downloadAudioBtn.disabled = false;
+    } else {
+      downloadTranscriptBtn.disabled = true;
+      downloadAudioBtn.disabled = true;
+    }
+  }
+
+  // play/pause/seek handling
+  preview.addEventListener('play', () => {
+    bgStopRequested = false;
+    startBackgroundTranscription();
+  });
+  preview.addEventListener('pause', () => {
+    bgStopRequested = true;
+    statusEl.textContent = 'Paused';
+  });
+  preview.addEventListener('seeking', () => {
+    // stop current background loop; a new one will start on play
+    bgStopRequested = true;
+  });
+  preview.addEventListener('ended', () => {
+    bgStopRequested = true;
+    updateProgressUI();
+  });
+
+  // When video metadata loaded, create segments (no heavy recording yet)
   preview.addEventListener('loadedmetadata', () => {
-    // nothing heavy here; we will record lazily
     const total = preview.duration || 0;
     const count = Math.ceil(total / SEG_LEN);
-    // show initial placeholder subtitle for first segment (pre-create one segment transcript early)
     if (count > 0) {
-      prefetchAndTranscribeSegment(0); // start transcribing first segment early
+      // prefetch first segment to give quick subtitle
+      prefetchAndTranscribeSegment(0).catch(()=>{});
+      updateProgressUI();
     }
   });
 
-  // When playback enters a new segment, show available subtitles and pre-transcribe the next segment
+  // When playback enters a new segment, show available subtitles and pre-transcribe next
   let lastShownSegment = -1;
   preview.addEventListener('timeupdate', async () => {
     const t = preview.currentTime;
@@ -772,69 +891,54 @@
       const segDur = Math.min(SEG_LEN, (preview.duration || 0) - segStart);
       const key = `${segStart.toFixed(3)}`;
 
-      // If transcript ready, render it
       if (segmentTranscripts[key]) {
         renderSubtitleForSegmentText(segmentTranscripts[key], segStart, segDur);
       } else {
-        // show "Processing..." placeholder while it's being produced
         subtitleEl.classList.remove('hidden');
         subtitleEl.innerHTML = `<span style="opacity:0.8">[Processing segment ${idx+1}...]</span>`;
-        // ensure prefetch for this segment is started
-        prefetchAndTranscribeSegment(idx);
+        // start transcribing this segment (non-blocking)
+        prefetchAndTranscribeSegment(idx).then(() => updateProgressUI()).catch(()=>updateProgressUI());
       }
 
-      // prefetch next segment (10s early)
-      prefetchAndTranscribeSegment(idx + 1);
+      // ensure next segment prefetch is started (background continues anyway)
+      prefetchAndTranscribeSegment(idx + 1).catch(()=>{});
     }
   });
 
-  // Prefetch and transcribe specified segment index (if within duration)
-  async function prefetchAndTranscribeSegment(idx) {
-    const total = preview.duration || 0;
-    const segStart = idx * SEG_LEN;
-    if (segStart >= total || idx < 0) return;
-    const segDur = Math.min(SEG_LEN, total - segStart);
-    const key = `${segStart.toFixed(3)}`;
-    if (segmentTranscripts[key]) return; // already have transcript
-    try {
-      // ensure we have blob/bytes
-      let blob = segmentBlobs[key];
-      if (!blob) {
-        const srcUrl = preview.currentSrc || preview.src;
-        blob = await recordSegmentBlob(srcUrl, segStart, segDur);
-      }
-      // store bytes if not set
-      if (!segmentBytes[key]) {
-        const ab = await blob.arrayBuffer();
-        segmentBytes[key] = new Uint8Array(ab);
-      }
-      // transcribe using Web Speech API (requires mic permission)
-      // choose language from UI
-      const lang = (document.getElementById('lang') && document.getElementById('lang').value) || 'en-US';
-      const result = await transcribeBlobViaSpeechRecognition(blob, (lang === 'auto' ? 'en-US' : lang), Math.ceil(segDur * 1000) + 8000);
-      segmentTranscripts[key] = result || '[no speech detected]';
-      // If current video time is within this segment, immediately render
-      const curT = preview.currentTime;
-      if (curT >= segStart && curT <= segStart + segDur + 0.05) {
-        renderSubtitleForSegmentText(segmentTranscripts[key], segStart, segDur);
-      }
-      // also append to main transcript area (append with segment time)
-      const stamp = new Date().toISOString();
-      transcriptEl.textContent = transcriptEl.textContent + `\n[${segStart.toFixed(1)}s] ${segmentTranscripts[key]}`;
-    } catch (err) {
-      console.warn('prefetch/transcribe failed for segment', idx, err);
-      // mark as failed to avoid retry storm
-      segmentTranscripts[key] = '[transcription failed]';
-      transcriptEl.textContent = transcriptEl.textContent + `\n[${segStart.toFixed(1)}s] [transcription failed]`;
-    }
-  }
+  // download transcript button handler
+  downloadTranscriptBtn.addEventListener('click', () => {
+    const text = transcriptEl.textContent || '';
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'transcript.txt';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
 
-  // NOTE: Web Speech API listens to microphone; to transcribe audio played by the page
-  // the browser will capture the played audio via the system mic. There is no standard
-  // SpeechRecognition API method to feed raw audio bytes directly.
-  // This implementation records audio bytes (Uint8Array) and plays them back while
-  // SpeechRecognition listens so it can produce transcripts. The user must allow microphone permission.
+  // (Optional) download audio: concat known segment blobs into a single blob (best-effort)
+  downloadAudioBtn.addEventListener('click', () => {
+    const keys = Object.keys(segmentBlobs).sort((a,b)=>Number(a)-Number(b));
+    if (keys.length === 0) return;
+    const parts = keys.map(k => segmentBlobs[k]);
+    const out = new Blob(parts, { type: parts[0].type || 'audio/webm' });
+    const url = URL.createObjectURL(out);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'audio_segments.webm';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
 
+  // expose some globals for debugging (optional)
+  window._miraa = {
+    segmentBlobs, segmentBytes, segmentTranscripts, startBackgroundTranscription
+  };
   </script>
 
 </body>
