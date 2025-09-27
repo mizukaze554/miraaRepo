@@ -494,7 +494,6 @@ document.addEventListener('DOMContentLoaded', () => {
         pipelineFunc = mod.pipeline;
       } catch (err) {
         console.warn('Transformers import failed', err);
-        // fallback: show message
         const fallback = 'Automatic transcription unavailable (transformers load failed).';
         transcriptText = fallback;
         transcriptEl.textContent = fallback;
@@ -511,17 +510,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // the pipeline accepts File/Blob; pass wavBlob
       const res = await asr(wavBlob);
-      // result may be {text: '...'} or similar
-      transcriptText = (res && (res.text || res[0]?.text)) || String(res) || 'No text';
+      console.log('ASR result:', res);
+
+      // Extract text from various possible response shapes
+      let text = '';
+      if (!res) {
+        text = '';
+      } else if (typeof res === 'string') {
+        text = res;
+      } else if (typeof res === 'object') {
+        if (res.text) text = res.text;
+        else if (res.generated_text) text = res.generated_text;
+        else if (Array.isArray(res) && res.length) {
+          // array of chunks
+          const first = res[0];
+          if (first && (first.text || first.generated_text)) text = first.text || first.generated_text;
+          else {
+            // try to concatenate text-like properties
+            text = res.map(r => (r && (r.text || r.generated_text || '') )).join(' ').trim();
+          }
+        } else {
+          // last resort: JSON stringify
+          text = String(res);
+        }
+      }
+
+      transcriptText = (text && text.trim()) || '';
+      if (!transcriptText) {
+        transcriptText = '[Model returned no transcript]';
+        setStatus('No text returned', 'warning');
+      } else {
+        setStatus('Transcription done', 'success');
+      }
+
       transcriptEl.textContent = transcriptText;
 
-      // prepare words for approximate sync
+      // prepare words for approximate sync (uniform timing across the segment)
       lastTranscriptWords = transcriptText.trim().split(/\s+/).filter(Boolean);
       renderSubtitleWords(lastTranscriptWords);
 
-      setStatus('Transcription done', 'success');
-      setProgress(100);
+      // Auto-play the segment with real-time subtitle highlighting
+      // ensure preview visible and then play synchronized segment
+      playSegment(idx);
 
+      setProgress(100);
     } catch (err) {
       console.error('Transcription error', err);
       transcriptText = 'Transcription failed: ' + (err.message || err);
