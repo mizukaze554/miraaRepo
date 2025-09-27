@@ -1,5 +1,11 @@
 // Import FFmpeg from CDN with proper CORS and MIME types
-const FFmpeg = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/esm/index.js');
-const FFmpegCore = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.4/dist/esm/index.js');
+const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg';
+const ffmpegVersion = '0.12.7';
+const coreVersion = '0.12.4';
 
-export const { createFFmpeg, fetchFile } = FFmpeg;
+const { createFFmpeg, fetchFile } = await import(`${baseURL}/ffmpeg@${ffmpegVersion}/dist/esm/index.js`);
+
+// Pre-load the core module
+await import(`${baseURL}/core@${coreVersion}/dist/esm/index.js`);
+
+export { createFFmpeg, fetchFile };
