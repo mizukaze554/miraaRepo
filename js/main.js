@@ -274,3 +274,172 @@ dropZone.addEventListener('drop', (e) => {
     setStatus('Error initializing application. Please refresh the page.');
   }
 })();
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Elements
+  const videoInput = document.getElementById('videoFile');
+  const preview = document.getElementById('preview');
+  const dropZone = document.querySelector('.drop-zone');
+  const startBtn = document.getElementById('startBtn');
+  const downloadAudioBtn = document.getElementById('downloadAudio');
+  const downloadTranscriptBtn = document.getElementById('downloadTranscript');
+  const statusEl = document.getElementById('status');
+  const progEl = document.getElementById('prog');
+  const transcriptEl = document.getElementById('transcript');
+
+  let selectedFile = null;
+  let audioBlobUrl = null;
+  let transcriptText = '—';
+
+  // Helpers
+  const setStatus = (text, className = '') => {
+    statusEl.textContent = text;
+    statusEl.className = 'text-sm font-medium px-3 py-1 rounded-full bg-gray-100 text-gray-600';
+    if (className) statusEl.classList.add(className);
+  };
+  const setProgress = (percent) => { progEl.style.width = `${percent}%`; };
+
+  // File validation and preview
+  const handleFile = (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('video/')) {
+      alert('Please select a valid video file.');
+      return;
+    }
+    if (file.size > 500 * 1024 * 1024) {
+      alert('File size must be less than 500MB.');
+      return;
+    }
+
+    selectedFile = file;
+    // show preview
+    preview.src = URL.createObjectURL(file);
+    preview.classList.remove('hidden');
+    setStatus('Ready');
+    startBtn.disabled = false;
+  };
+
+  // Input change
+  videoInput.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    handleFile(f);
+  });
+
+  // Drag & drop
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = '#2563eb';
+    dropZone.style.backgroundColor = 'rgba(37, 99, 235, 0.05)';
+  });
+  dropZone.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = '';
+    dropZone.style.backgroundColor = '';
+  });
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = '';
+    dropZone.style.backgroundColor = '';
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) {
+      // push file into input.files for consistency
+      try {
+        const dt = new DataTransfer();
+        dt.items.add(f);
+        videoInput.files = dt.files;
+      } catch (err) {
+        // fallback: leave input alone
+      }
+      handleFile(f);
+    }
+  });
+
+  // Disable downloads until available
+  downloadAudioBtn.disabled = true;
+  downloadTranscriptBtn.disabled = true;
+  startBtn.disabled = true;
+
+  // Start processing: dynamically import ffmpeg when needed
+  startBtn.addEventListener('click', async () => {
+    if (!selectedFile) {
+      alert('No video selected.');
+      return;
+    }
+
+    // UI guard
+    startBtn.disabled = true;
+    setStatus('Loading ffmpeg...', 'loading');
+    setProgress(5);
+
+    try {
+      // dynamic import uses importmap mapping in index.html
+      const { createFFmpeg, fetchFile } = await import('@ffmpeg/ffmpeg');
+      // explicitly point corePath to unpkg to avoid jsdelivr MIME issues
+      const ffmpeg = createFFmpeg({
+        log: true,
+        corePath: 'https://unpkg.com/@ffmpeg/core@0.12.7/dist/ffmpeg-core.js'
+      });
+
+      setStatus('Initializing ffmpeg...');
+      await ffmpeg.load();
+      setProgress(20);
+
+      // write file
+      setStatus('Loading video into ffmpeg filesystem...');
+      const data = await fetchFile(selectedFile);
+      ffmpeg.FS('writeFile', 'input_video', data);
+      setProgress(35);
+
+      // extract audio to WAV (16k sample) - suitable for offline ASR later
+      setStatus('Extracting audio...');
+      // remove existing output if any
+      try { ffmpeg.FS('unlink', 'output.wav'); } catch (e) {}
+      await ffmpeg.run('-i', 'input_video', '-vn', '-acodec', 'pcm_s16le', '-ac', '1', '-ar', '16000', 'output.wav');
+      setProgress(75);
+
+      // read result and create blob url
+      const audioData = ffmpeg.FS('readFile', 'output.wav');
+      const audioBlob = new Blob([audioData.buffer], { type: 'audio/wav' });
+      if (audioBlobUrl) URL.revokeObjectURL(audioBlobUrl);
+      audioBlobUrl = URL.createObjectURL(audioBlob);
+
+      // enable audio download button
+      downloadAudioBtn.disabled = false;
+      downloadAudioBtn.addEventListener('click', (ev) => {
+        // download as .wav
+        const a = document.createElement('a');
+        a.href = audioBlobUrl;
+        a.download = (selectedFile && selectedFile.name ? selectedFile.name.replace(/\.[^/.]+$/, '') : 'audio') + '.wav';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }, { once: true });
+
+      // Minimal transcript placeholder — actual ASR (Transformers) can be added later
+      transcriptText = 'Audio extracted. Run ASR (transformers) to generate transcription in-browser. (Not executed automatically.)';
+      transcriptEl.textContent = transcriptText;
+      downloadTranscriptBtn.disabled = false;
+      downloadTranscriptBtn.addEventListener('click', (ev) => {
+        const blob = new Blob([transcriptText], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = (selectedFile && selectedFile.name ? selectedFile.name.replace(/\.[^/.]+$/, '') : 'transcript') + '.txt';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }, { once: true });
+
+      setProgress(100);
+      setStatus('Done', 'success');
+    } catch (err) {
+      console.error('Processing error:', err);
+      alert('An error occurred while processing. See console for details.');
+      setStatus('Error', 'error');
+      setProgress(0);
+    } finally {
+      startBtn.disabled = false;
+    }
+  });
+});
