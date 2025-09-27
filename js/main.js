@@ -113,6 +113,37 @@ document.addEventListener('DOMContentLoaded', () => {
   downloadAudioBtn.disabled = true;
   downloadTranscriptBtn.disabled = true;
 
+  // NEW helper: decode audio from file using AudioContext.decodeAudioData
+  async function decodeAudioFromFile(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const audioCtx = new (window.OfflineAudioContext || window.AudioContext || window.webkitAudioContext)(1, 1, 16000);
+    try {
+      // Try decodeAudioData on a real AudioContext (not Offline) for wider support
+      const realCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (realCtx.state === 'suspended') {
+        try { await realCtx.resume(); } catch (_) {}
+      }
+      const audioBuffer = await new Promise((resolve, reject) => {
+        realCtx.decodeAudioData(arrayBuffer, resolve, reject);
+      });
+      try { realCtx.close && realCtx.close(); } catch (_) {}
+      return audioBuffer;
+    } catch (err) {
+      // decoding failed (common for some mp4 containers), try OfflineAudioContext fallback
+      try {
+        const offlineCtx = new (window.OfflineAudioContext || window.AudioContext)(1, 1, 16000);
+        const audioBuffer = await new Promise((resolve, reject) => {
+          offlineCtx.decodeAudioData(arrayBuffer, resolve, reject);
+        });
+        try { offlineCtx.close && offlineCtx.close(); } catch (_) {}
+        return audioBuffer;
+      } catch (err2) {
+        // give up decodeAudioData
+        return null;
+      }
+    }
+  }
+
   // Utility: convert AudioBuffer -> WAV (PCM16)
   function audioBufferToWav(buffer, opts = {}) {
     const numChannels = 1; // use mono for smaller size and ASR friendliness
@@ -184,25 +215,44 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Extract audio via captureStream + MediaRecorder + decoding -> WAV
+  // Extract audio via preferred decode path; fallback to captureStream if decode fails
   async function extractAudioFromVideo(file) {
-    setStatus('Preparing recording...');
+    setStatus('Preparing audio extraction...');
     setProgress(5);
 
-    const fileUrl = URL.createObjectURL(file);
+    // Try decoding directly from file
+    let audioBuffer = null;
+    try {
+      audioBuffer = await decodeAudioFromFile(file);
+    } catch (err) {
+      console.warn('decodeAudioFromFile failed', err);
+      audioBuffer = null;
+    }
 
-    // create hidden video element to drive captureStream
+    if (audioBuffer) {
+      // Use decoded audio buffer -> WAV
+      setStatus('Decoding succeeded (direct). Converting to WAV...');
+      setProgress(40);
+      const wavBuffer = audioBufferToWav(audioBuffer, { sampleRate: 16000 });
+      const wavBlob = new Blob([wavBuffer], { type: 'audio/wav' });
+      setProgress(100);
+      setStatus('Audio ready (decoded)', 'success');
+      return wavBlob;
+    }
+
+    // Fallback: captureStream + MediaRecorder (existing approach)
+    setStatus('Direct decode failed — falling back to captureStream.');
+    setProgress(10);
+
+    const fileUrl = URL.createObjectURL(file);
     const v = document.createElement('video');
     v.style.display = 'none';
-    // don't use muted=true here — some browsers won't expose audio tracks when muted.
-    // keep the audio silent by setting volume to 0 but leaving muted false so captureStream sees audio.
     v.muted = false;
     v.volume = 0;
     v.playsInline = true;
     v.src = fileUrl;
     document.body.appendChild(v);
 
-    // ensure user gesture resumed audio context later
     // wait metadata
     await new Promise((res, rej) => {
       const t = setTimeout(() => rej(new Error('Video load timeout')), 10000);
@@ -210,10 +260,6 @@ document.addEventListener('DOMContentLoaded', () => {
       v.addEventListener('error', (e) => { clearTimeout(t); rej(new Error('Video load error')); }, { once: true });
     });
 
-    setProgress(15);
-    setStatus('Starting capture...');
-
-    // Start playback first so captureStream will include audio tracks on most browsers
     try {
       await v.play();
     } catch (err) {
@@ -221,12 +267,11 @@ document.addEventListener('DOMContentLoaded', () => {
       URL.revokeObjectURL(fileUrl);
       throw err;
     }
-    
+
     let stream;
     try {
       stream = v.captureStream();
     } catch (err) {
-      // older browsers: try captureStream with fallback
       stream = v.mozCaptureStream ? v.mozCaptureStream() : null;
       if (!stream) {
         v.pause();
@@ -236,7 +281,17 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // pick an audio mimeType supported by MediaRecorder
+    // use audio tracks only
+    const audioTracks = stream.getAudioTracks();
+    if (!audioTracks || audioTracks.length === 0) {
+      v.pause();
+      v.remove();
+      URL.revokeObjectURL(fileUrl);
+      throw new Error('No audio track found in the video.');
+    }
+    const audioStream = new MediaStream(audioTracks);
+
+    // pick a supported audio mime type
     let mimeType = '';
     if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
       mimeType = 'audio/webm;codecs=opus';
@@ -246,56 +301,38 @@ document.addEventListener('DOMContentLoaded', () => {
       mimeType = 'audio/ogg';
     }
 
-    if (!mimeType) {
-      // still try default
-      mimeType = '';
-    }
-
-    // Use only audio tracks for MediaRecorder (video track causes "audio type" errors)
-    const audioTracks = stream.getAudioTracks();
-    if (!audioTracks || audioTracks.length === 0) {
-      v.pause();
-      v.remove();
-      URL.revokeObjectURL(fileUrl);
-      throw new Error('No audio track found in the video.');
-    }
-    const audioStream = new MediaStream(audioTracks);
     const recorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
-    
     const chunks = [];
     recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
 
-    // play and record
-    setStatus('Recording audio from video...');
+    setStatus('Recording audio from video (fallback)...');
     setProgress(25);
-
     recorder.start();
+
     // Wait until video ends
     await new Promise((res, rej) => {
       v.addEventListener('ended', res, { once: true });
       v.addEventListener('error', (e) => rej(new Error('Playback error')), { once: true });
-      // safety: if video is very long, still wait for ended
     });
 
-    // stop recorder, wait for final data
+    // stop and wait for final chunks
     await new Promise((res) => {
       recorder.onstop = () => res();
       try { recorder.stop(); } catch (_) { res(); }
     });
 
     setProgress(60);
-    setStatus('Decoding and converting audio...');
+    setStatus('Decoding recorded audio (fallback)...');
 
-    // combine chunks into blob and decode
     const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
     const arrayBuffer = await blob.arrayBuffer();
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    // resume on user gesture (should be allowed)
     if (audioCtx.state === 'suspended') await audioCtx.resume();
+    const decoded = await new Promise((resolve, reject) => {
+      audioCtx.decodeAudioData(arrayBuffer, resolve, reject);
+    });
 
-    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-    // convert to WAV (PCM16) with target sampleRate 16000
-    const wavBuffer = audioBufferToWav(audioBuffer, { sampleRate: 16000 });
+    const wavBuffer = audioBufferToWav(decoded, { sampleRate: 16000 });
     const wavBlob = new Blob([wavBuffer], { type: 'audio/wav' });
 
     // cleanup
@@ -303,17 +340,54 @@ document.addEventListener('DOMContentLoaded', () => {
     v.remove();
     URL.revokeObjectURL(fileUrl);
 
-    setProgress(90);
-    setStatus('Audio ready');
-
+    setProgress(100);
+    setStatus('Audio ready (fallback)', 'success');
     return wavBlob;
   }
 
   // New: extract only a time range [start, start+duration) from the file
   async function extractAudioSegment(file, startSec, durSec) {
-    // similar to extractAudioFromVideo but seek and record only durSec
     setStatus(`Preparing segment ${startSec}s…`);
     setProgress(5);
+
+    // Try decode entire file first and slice the audio buffer if possible
+    let audioBuffer = null;
+    try {
+      audioBuffer = await decodeAudioFromFile(file);
+    } catch (err) {
+      audioBuffer = null;
+    }
+
+    if (audioBuffer) {
+      // Slice channels into mono float array for the requested segment
+      const sampleRate = audioBuffer.sampleRate;
+      const startSample = Math.floor(startSec * sampleRate);
+      const frameCount = Math.max(0, Math.floor(durSec * sampleRate));
+      // merge channels to mono
+      const tmp = new Float32Array(frameCount);
+      for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+        const chData = audioBuffer.getChannelData(ch).subarray(startSample, startSample + frameCount);
+        for (let i = 0; i < chData.length; i++) {
+          tmp[i] = (tmp[i] || 0) + chData[i] / audioBuffer.numberOfChannels;
+        }
+      }
+      // resample & encode to WAV via audioBufferToWav helper by wrapping tmp into a pseudo-AudioBuffer-like object
+      const pseudoBuffer = {
+        numberOfChannels: 1,
+        sampleRate: sampleRate,
+        getChannelData: () => tmp
+      };
+      const wavBuffer = audioBufferToWav(pseudoBuffer, { sampleRate: 16000 });
+      const wavBlob = new Blob([wavBuffer], { type: 'audio/wav' });
+      setProgress(100);
+      setStatus('Segment audio ready (decoded)', 'success');
+      return wavBlob;
+    }
+
+    // Fallback: use captureStream/MediaRecorder and record durSec seconds starting at startSec
+    setStatus('Direct decode failed — using captureStream fallback for segment.');
+    setProgress(10);
+
     const fileUrl = URL.createObjectURL(file);
     const v = document.createElement('video');
     v.style.display = 'none';
@@ -330,15 +404,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // seek to start
-    await new Promise((res, rej) => {
+    await new Promise((res) => {
       const onSeek = () => { v.removeEventListener('seeked', onSeek); res(); };
       v.addEventListener('seeked', onSeek);
       try { v.currentTime = Math.min(startSec, Math.max(0, v.duration - 0.001)); } catch (e) { res(); }
-      // safety timeout
       setTimeout(res, 2000);
     });
 
-    // play and capture
     try { await v.play(); } catch (err) { v.remove(); URL.revokeObjectURL(fileUrl); throw err; }
     let stream;
     try { stream = v.captureStream(); } catch (err) {
@@ -352,7 +424,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const audioStream = new MediaStream(audioTracks);
 
-    // choose audio mime
     let mimeType = '';
     if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mimeType = 'audio/webm;codecs=opus';
     else if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
@@ -363,10 +434,10 @@ document.addEventListener('DOMContentLoaded', () => {
     recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
 
     recorder.start();
-    setStatus('Recording segment audio...');
+    setStatus('Recording segment audio (fallback)...');
     setProgress(30);
 
-    // stop after durSec seconds (or when video ends)
+    // stop after durSec seconds or when video ends
     await new Promise((res) => {
       const stopAfter = setTimeout(() => {
         try { recorder.stop(); } catch (_) {}
@@ -380,26 +451,27 @@ document.addEventListener('DOMContentLoaded', () => {
       }, { once: true });
     });
 
-    // wait for onstop to finish collecting data
-    await new Promise((res) => {
-      recorder.onstop = () => res();
-    });
+    // wait for onstop
+    await new Promise((res) => { recorder.onstop = () => res(); });
 
     setProgress(60);
-    setStatus('Decoding segment audio...');
+    setStatus('Decoding recorded audio (fallback)...');
 
     const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
     const arrayBuffer = await blob.arrayBuffer();
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === 'suspended') await audioCtx.resume();
-    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    const decoded = await new Promise((resolve, reject) => {
+      audioCtx.decodeAudioData(arrayBuffer, resolve, reject);
+    });
 
-    // convert to wav (16000 mono)
-    const wavBuffer = audioBufferToWav(audioBuffer, { sampleRate: 16000 });
+    const wavBuffer = audioBufferToWav(decoded, { sampleRate: 16000 });
     const wavBlob = new Blob([wavBuffer], { type: 'audio/wav' });
 
     v.pause(); v.remove(); URL.revokeObjectURL(fileUrl);
-    setProgress(90); setStatus('Segment audio ready');
+
+    setProgress(100);
+    setStatus('Segment audio ready (fallback)', 'success');
     return wavBlob;
   }
 
