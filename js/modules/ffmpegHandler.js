@@ -1,4 +1,5 @@
 // FFmpeg operations and video processing
+import { createFFmpeg } from '@ffmpeg/ffmpeg';
 import {
   isValidUint8Array,
   checkBufferSize,
@@ -11,7 +12,7 @@ const CHUNK_SIZE = 1024 * 1024; // 1MB chunks for large files
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
 const MIN_FILE_SIZE = 1024; // 1KB
 
-class FFmpegHandler {
+export class FFmpegHandler {
   constructor() {
     this.ffmpeg = null;
     this.tempFiles = [];
@@ -21,7 +22,7 @@ class FFmpegHandler {
 
   async init() {
     try {
-      this.ffmpeg = this.createFFmpeg({
+      this.ffmpeg = createFFmpeg({
         log: true,
         logger: ({ type, message }) => {
           if (type === 'fferr') {

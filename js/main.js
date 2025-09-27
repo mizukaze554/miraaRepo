@@ -4,7 +4,7 @@ import { initDB, saveToIndexedDB, getFromIndexedDB } from './modules/database.js
 import { approximateVocalIsolation } from './modules/audioProcessor.js';
 import { FFmpegHandler } from './modules/ffmpegHandler.js';
 import { loadTranscriber, transcribeAudioBlob } from './modules/transcriber.js';
-import { createFFmpeg, fetchFile } from './ffmpeg.js';
+import { createFFmpeg } from '@ffmpeg/ffmpeg';
 
 let ffmpegHandler;
 let latestAudioBlob = null;

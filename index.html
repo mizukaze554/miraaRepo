@@ -8,30 +8,6 @@
   <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data: https://cdn.jsdelivr.net https://esm.sh; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://esm.sh https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self' https://esm.sh https://cdn.jsdelivr.net blob:; img-src 'self' blob: data:; media-src blob: 'self'; style-src-elem 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src-attr 'unsafe-inline'" />
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            primary: {
-              DEFAULT: '#0ea5a4',
-              dark: '#0c8483',
-            }
-          },
-          animation: {
-            'progress': 'progress 1s ease infinite',
-            'spin-slow': 'spin 3s linear infinite',
-          },
-          keyframes: {
-            progress: {
-              '0%': { width: '0%' },
-              '100%': { width: '100%' },
-            }
-          }
-        }
-      }
-    }
-  </script>
   <style>
     :root {
       --primary-color: #0ea5a4;
@@ -426,7 +402,7 @@
     <p class="text-sm text-gray-500">No server required - all processing happens in your browser</p>
   </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js"></script>
 <script type="module" src="js/main.js"></script>
 
 // ---------- IndexedDB Setup ----------
