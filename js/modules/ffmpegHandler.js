@@ -11,13 +11,16 @@ import {
 const CHUNK_SIZE = 1024 * 1024; // 1MB chunks for large files
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
 const MIN_FILE_SIZE = 1024; // 1KB
+const MAX_DURATION = 7200; // 2 hours in seconds
+const TIMEOUT_DURATION = 300000; // 5 minutes in milliseconds
 
 export class FFmpegHandler {
-  constructor() {
+  constructor(setStatusCallback) {
     this.ffmpeg = null;
     this.tempFiles = [];
     this.processingAborted = false;
     this.currentOperation = null;
+    this.setStatus = setStatusCallback;
   }
 
   async init() {
@@ -62,7 +65,7 @@ export class FFmpegHandler {
     }
   }
 
-  async processVideo(videoFile, maxDuration = 7200) {
+  async processVideo(videoFile) {
     if (this.processingAborted) {
       throw new Error('Processing was aborted');
     }
@@ -121,7 +124,7 @@ export class FFmpegHandler {
       const ffmpegArgs = [
         "-y",
         "-i", inputFileName,
-        "-t", String(maxDuration),
+        "-t", String(MAX_DURATION),
         "-vn",
         "-acodec", "pcm_s16le",
         "-ar", "44100",
@@ -134,7 +137,7 @@ export class FFmpegHandler {
       const timeout = setTimeout(() => {
         this.abort();
         throw new Error('FFmpeg operation timed out');
-      }, 300000); // 5 minutes timeout
+      }, TIMEOUT_DURATION);
 
       try {
         await this.ffmpeg.run(...ffmpegArgs);

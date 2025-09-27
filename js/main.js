@@ -14,7 +14,7 @@ let latestTranscriptText = "";
 async function init() {
   try {
     await initDB();
-    ffmpegHandler = new FFmpegHandler(createFFmpeg, fetchFile, setStatus);
+    ffmpegHandler = new FFmpegHandler(setStatus);
     setupFilePreview();
     setupProcessing();
   } catch (error) {
