@@ -4,10 +4,20 @@ import { initDB, saveToIndexedDB, getFromIndexedDB } from './modules/database.js
 import { approximateVocalIsolation } from './modules/audioProcessor.js';
 import { FFmpegHandler } from './modules/ffmpegHandler.js';
 import { loadTranscriber, transcribeAudioBlob } from './modules/transcriber.js';
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile } from '@ffmpeg/util';
+import { pipeline } from '@xenova/transformers';
 
 let ffmpegHandler;
 let latestAudioBlob = null;
 let latestTranscriptText = "";
+
+// Initialize FFmpeg
+const ffmpeg = new FFmpeg();
+await ffmpeg.load();
+
+// Initialize transformers
+const pipe = await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny');
 
 // Initialize the application
 async function init() {

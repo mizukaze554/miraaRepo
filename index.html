@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
   <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data: https://cdn.jsdelivr.net https://esm.sh; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://esm.sh https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self' https://esm.sh https://cdn.jsdelivr.net blob:; img-src 'self' blob: data:; media-src blob: 'self'; style-src-elem 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src-attr 'unsafe-inline';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data: https://cdn.jsdelivr.net https://unpkg.com https://esm.sh; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://esm.sh https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self' https://esm.sh https://cdn.jsdelivr.net https://unpkg.com blob:; img-src 'self' blob: data:; media-src blob: 'self'; style-src-elem 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src-attr 'unsafe-inline';" />
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <style>
     :root {
@@ -514,10 +514,19 @@
     <p class="text-sm text-gray-500">All processing happens in your browser - no server required</p>
   </footer>
 
-<!-- FFmpeg: using v0.12.7 via script tag to avoid CORS/MIME module import issues -->
-<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/ffmpeg.min.js"></script>
-<script type="module" src="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js"></script>
-<script type="module" src="js/main.js"></script>
+  <!-- Replace the old FFmpeg script with ESM version -->
+  <script type="importmap">
+  {
+    "imports": {
+      "@ffmpeg/ffmpeg": "https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/esm/index.js",
+      "@ffmpeg/util": "https://unpkg.com/@ffmpeg/util@0.12.0/dist/esm/index.js",
+      "@xenova/transformers": "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/+esm"
+    }
+  }
+  </script>
+
+  <!-- Update script imports at the end of body -->
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>
 
