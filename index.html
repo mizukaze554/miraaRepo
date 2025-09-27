@@ -404,7 +404,8 @@
         <div class="md:col-span-2">
           <div class="flex items-center justify-center space-x-2 p-4 bg-gray-50 rounded-lg">
             <label class="relative inline-flex items-center cursor-pointer">
-              <input id="isolate" type="checkbox" class="sr-only peer">
+              <!-- Auto-enable vocal isolation by default -->
+              <input id="isolate" type="checkbox" class="sr-only peer" checked>
               <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300/25 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               <span class="ml-3 text-sm font-medium text-gray-700">Enable Vocal Isolation</span>
             </label>
@@ -533,6 +534,12 @@
   const downloadAudioBtn = document.getElementById('downloadAudio');
   const downloadTranscriptBtn = document.getElementById('downloadTranscript');
 
+  // ensure isolate checkbox is checked and visible state is synced
+  const isolateEl = document.getElementById('isolate');
+  if (isolateEl) {
+    try { isolateEl.checked = true; isolateEl.dispatchEvent(new Event('change')); } catch(_) {}
+  }
+  
   // segment size in seconds
   const SEG_LEN = 10;
 
@@ -589,7 +596,41 @@
       v.pause(); v.remove();
       throw new Error('No audio track available');
     }
-    const audioStream = new MediaStream(audioTracks);
+    let audioStream = new MediaStream(audioTracks);
+
+    // If isolation is enabled, try to perform a center-channel extraction (best-effort)
+    // Strategy: use WebAudio to sum left+right into a center signal and route to a MediaStreamDestination.
+    let isolationAudioCtx = null;
+    if (typeof isolateEl !== 'undefined' && isolateEl && isolateEl.checked) {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        isolationAudioCtx = new AudioCtx();
+        const srcNode = isolationAudioCtx.createMediaStreamSource(audioStream);
+        // create splitter, gains and merger to compute center = (L + R) / 2
+        const splitter = isolationAudioCtx.createChannelSplitter(2);
+        const leftGain = isolationAudioCtx.createGain();
+        const rightGain = isolationAudioCtx.createGain();
+        leftGain.gain.value = 0.5;
+        rightGain.gain.value = 0.5;
+        const merger = isolationAudioCtx.createChannelMerger(2);
+        srcNode.connect(splitter);
+        splitter.connect(leftGain, 0);
+        splitter.connect(rightGain, 1);
+        // sum into both output channels (mono center duplicated)
+        leftGain.connect(merger, 0, 0);
+        rightGain.connect(merger, 0, 0);
+        leftGain.connect(merger, 0, 1);
+        rightGain.connect(merger, 0, 1);
+        const dest = isolationAudioCtx.createMediaStreamDestination();
+        merger.connect(dest);
+        // use the isolated stream for recording
+        audioStream = dest.stream;
+      } catch (e) {
+        console.warn('Vocal isolation failed, falling back to original audio stream', e);
+        try { if (isolationAudioCtx) isolationAudioCtx.close(); } catch(_) {}
+        isolationAudioCtx = null;
+      }
+    }
 
     let mimeType = '';
     if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mimeType = 'audio/webm;codecs=opus';
@@ -627,6 +668,12 @@
     const u8 = new Uint8Array(arrayBuffer);
     segmentBytes[idxKey] = u8;
     segmentBlobs[idxKey] = blob;
+
+    // close isolation audio context if we opened one
+    if (isolationAudioCtx) {
+      try { await isolationAudioCtx.close(); } catch(_) {}
+      isolationAudioCtx = null;
+    }
 
     // cleanup
     v.pause();
