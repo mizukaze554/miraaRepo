@@ -1,6 +1,6 @@
 // FFmpeg operations and video processing
-// Use CDN import (browsers can't resolve bare specifiers like '@ffmpeg/ffmpeg')
-import { createFFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.0/dist/ffmpeg.min.js';
+// FFmpeg operations and video processing
+// Dynamically import ffmpeg module (use version 0.12.7 as requested)
 import {
   isValidUint8Array,
   checkBufferSize,
@@ -26,7 +26,12 @@ export class FFmpegHandler {
 
   async init() {
     try {
-      this.ffmpeg = createFFmpeg({
+      const ffmpegMod = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/ffmpeg.min.js');
+      // Resolve createFFmpeg regardless of module export shape
+      const createFFmpegFn = ffmpegMod.createFFmpeg ?? (ffmpegMod.default && (ffmpegMod.default.createFFmpeg ?? ffmpegMod.default));
+      if (!createFFmpegFn) throw new Error('Could not resolve createFFmpeg from @ffmpeg/ffmpeg module');
+
+      this.ffmpeg = createFFmpegFn({
         log: true,
         logger: ({ type, message }) => {
           if (type === 'fferr') {
