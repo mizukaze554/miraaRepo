@@ -526,28 +526,41 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (err) {
         console.error('All transformer imports failed', err);
         // Provide fallback: let user download the segment audio and explain options
-        const fallbackMsg = 'Automatic transcription unavailable (transformers load failed). You can download the 10s WAV and transcribe locally or try a different browser.';
-        transcriptText = fallbackMsg;
-        transcriptEl.textContent = fallbackMsg;
+        const fallbackMsg = 'Automatic transcription unavailable (transformers load failed).';
+        transcriptEl.innerHTML = '';
+        const p = document.createElement('div');
+        p.textContent = fallbackMsg + ' You can download the 10s WAV and transcribe locally, try a different browser, or attempt a microphone-based transcription.';
+        p.style.marginBottom = '8px';
+        transcriptEl.appendChild(p);
         setStatus('Transcription unavailable', 'warning');
         setProgress(100);
 
         // expose download link for wavBlob
         const url = URL.createObjectURL(wavBlob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `segment-${seg.index || idx+1}.wav`;
-        a.textContent = 'Download segment WAV';
-        a.style.display = 'inline-block';
-        a.style.marginLeft = '8px';
-        // attach visibly in the transcript area
-        transcriptEl.innerHTML = '';
-        const p = document.createElement('div');
-        p.textContent = fallbackMsg;
-        p.style.marginBottom = '8px';
-        transcriptEl.appendChild(p);
-        transcriptEl.appendChild(a);
-        // revoke when user leaves (not immediate to allow click)
+        const dl = document.createElement('a');
+        dl.href = url;
+        dl.download = `segment-${seg.index || idx+1}.wav`;
+        dl.textContent = 'Download segment WAV';
+        dl.style.display = 'inline-block';
+        dl.style.marginRight = '12px';
+        transcriptEl.appendChild(dl);
+
+        // provide microphone-based fallback button if supported
+        const micBtn = document.createElement('button');
+        micBtn.textContent = 'Try Microphone Transcribe';
+        micBtn.className = 'ml-2 px-3 py-1 bg-green-600 text-white rounded text-sm';
+        micBtn.onclick = async () => {
+          micBtn.disabled = true;
+          try {
+            await tryLiveMicTranscribe(wavBlob, seg);
+          } finally {
+            micBtn.disabled = false;
+            // keep the download available
+          }
+        };
+        transcriptEl.appendChild(micBtn);
+
+        // revoke when user leaves after some time
         setTimeout(() => URL.revokeObjectURL(url), 60_000);
         return;
       }
@@ -619,6 +632,120 @@ document.addEventListener('DOMContentLoaded', () => {
       setStatus('Transcription error', 'error');
       setProgress(0);
     }
+  }
+
+  // New: microphone-based transcription fallback
+  async function tryLiveMicTranscribe(wavBlob, seg) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('SpeechRecognition API not available in this browser.');
+      return;
+    }
+
+    setStatus('Starting microphone transcription (allow microphone, play audio)...', 'loading');
+    setProgress(5);
+
+    const url = URL.createObjectURL(wavBlob);
+    const audio = new Audio(url);
+    audio.crossOrigin = 'anonymous';
+    audio.volume = 1; // user will likely hear audio; warn via UI
+    audio.playbackRate = 1.0;
+
+    const recognition = new SpeechRecognition();
+    // set language from UI if possible
+    const langSelect = document.getElementById('lang');
+    try { recognition.lang = (langSelect && langSelect.value) || 'en-US'; } catch (_) {}
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    let finalText = '';
+    recognition.onresult = (event) => {
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalText += event.results[i][0].transcript + ' ';
+        }
+      }
+    };
+
+    recognition.onerror = (ev) => {
+      console.warn('SpeechRecognition error', ev);
+    };
+
+    const cleanup = () => {
+      try { recognition.stop(); } catch (_) {}
+      audio.pause();
+      URL.revokeObjectURL(url);
+    };
+
+    // Start recognition then play audio so mic captures playback
+    try {
+      recognition.start();
+    } catch (err) {
+      console.warn('recognition.start failed', err);
+      alert('Could not start SpeechRecognition. Check microphone permission.');
+      cleanup();
+      setStatus('Microphone transcription failed', 'error');
+      return;
+    }
+
+    // If user permission is required, the browser will prompt.
+    // Play audio; user must have speakers enabled so mic can pick it up.
+    try {
+      await audio.play();
+    } catch (err) {
+      console.warn('audio.play failed', err);
+      // proceed but recognition may capture nothing
+    }
+
+    setStatus('Listening via microphone while audio plays...', 'loading');
+    setProgress(30);
+
+    // Wait until audio ends or recognition ends
+    await new Promise((res) => {
+      let ended = false;
+      const onAudioEnd = () => { ended = true; res(); };
+      audio.addEventListener('ended', onAudioEnd, { once: true });
+
+      // recognition.onend may fire earlier; watch both
+      recognition.onend = () => {
+        if (!ended) {
+          // if recognition stops early, stop audio as well
+          try { audio.pause(); } catch (_) {}
+          res();
+        } else {
+          res();
+        }
+      };
+      // safety timeout (e.g., long segments)
+      setTimeout(() => res(), (seg && seg.duration ? Math.ceil(seg.duration) : 10) * 1000 + 5000);
+    });
+
+    // finalize
+    try { recognition.stop(); } catch (_) {}
+    setProgress(70);
+    setStatus('Processing microphone results...', 'loading');
+
+    // small delay to ensure final events processed
+    await new Promise(r => setTimeout(r, 500));
+
+    // show results
+    if (finalText && finalText.trim()) {
+      transcriptText = finalText.trim();
+      transcriptEl.textContent = transcriptText;
+      lastTranscriptWords = transcriptText.split(/\s+/).filter(Boolean);
+      renderSubtitleWords(lastTranscriptWords);
+      // autoplay segment preview with subtitle sync
+      playSegment( (seg && seg.index ? seg.index - 1 : 0) );
+      setStatus('Microphone transcription done', 'success');
+      setProgress(100);
+    } else {
+      transcriptText = '[Microphone transcription returned no text]';
+      transcriptEl.textContent = transcriptText;
+      setStatus('No text from microphone', 'warning');
+      setProgress(0);
+    }
+
+    cleanup();
   }
 
   // show words as spans for highlighting
