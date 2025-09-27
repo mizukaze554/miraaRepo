@@ -206,6 +206,64 @@ function setupProcessing() {
   elements.startBtn.addEventListener("click", processVideo);
 }
 
+// Get DOM elements
+const videoInput = document.getElementById('videoFile');
+const preview = document.getElementById('preview');
+const startBtn = document.getElementById('startBtn');
+
+// File upload handling
+videoInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  
+  // Validate file
+  if (!file) return;
+  
+  if (!file.type.startsWith('video/')) {
+    alert('Please select a valid video file');
+    return;
+  }
+
+  if (file.size > 500 * 1024 * 1024) { // 500MB
+    alert('File size must be less than 500MB');
+    return;
+  }
+
+  // Show preview
+  preview.classList.remove('hidden');
+  preview.src = URL.createObjectURL(file);
+  
+  // Enable start button
+  startBtn.disabled = false;
+});
+
+// Drag and drop handling
+const dropZone = document.querySelector('.drop-zone');
+
+dropZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropZone.style.borderColor = '#2563eb';
+  dropZone.style.backgroundColor = 'rgba(37, 99, 235, 0.05)';
+});
+
+dropZone.addEventListener('dragleave', (e) => {
+  e.preventDefault();
+  dropZone.style.borderColor = '';
+  dropZone.style.backgroundColor = '';
+});
+
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.style.borderColor = '';
+  dropZone.style.backgroundColor = '';
+  
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    videoInput.files = e.dataTransfer.files;
+    const event = new Event('change');
+    videoInput.dispatchEvent(event);
+  }
+});
+
 // Start the application
 (async () => {
   try {

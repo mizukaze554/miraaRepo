@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
   <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data: https://cdn.jsdelivr.net https://esm.sh; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://esm.sh https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self' https://esm.sh https://cdn.jsdelivr.net blob:; img-src 'self' blob: data:; media-src blob: 'self'; style-src-elem 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src-attr 'unsafe-inline';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data: https://cdn.jsdelivr.net https://unpkg.com https://esm.sh; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://esm.sh https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self' https://esm.sh https://cdn.jsdelivr.net https://unpkg.com blob:; img-src 'self' blob: data:; media-src blob: 'self'; style-src-elem 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src-attr 'unsafe-inline';" />
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <style>
     :root {
@@ -339,9 +339,9 @@
       <!-- File Upload Section -->
       <div class="max-w-3xl mx-auto space-y-6">
         <div class="drop-zone rounded-xl p-8 text-center cursor-pointer relative group">
-          <input id="videoFile" type="file" accept="video/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+          <input id="videoFile" type="file" accept="video/*,.mp4,.webm,.mov" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
           <div class="space-y-4">
-            <div class="w-16 h-16 mx-auto bg-blue-50 rounded-full flex items-center justify-center">
+            <div id="dropIcon" class="w-16 h-16 mx-auto bg-blue-50 rounded-full flex items-center justify-center">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-blue-600" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1.586a1 1 0 01-.707-.293l-1.121-1.121A2 2 0 0011.172 3H8.828a2 2 0 00-1.414.586L6.293 4.707A1 1 0 015.586 5H4zm6 9a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
               </svg>
@@ -514,10 +514,19 @@
     <p class="text-sm text-gray-500">All processing happens in your browser - no server required</p>
   </footer>
 
-<!-- FFmpeg: using v0.12.7 via script tag to avoid CORS/MIME module import issues -->
-<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/ffmpeg.min.js"></script>
-<script type="module" src="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js"></script>
-<script type="module" src="js/main.js"></script>
+  <!-- Replace the old FFmpeg script with ESM version -->
+  <script type="importmap">
+  {
+    "imports": {
+      "@ffmpeg/ffmpeg": "https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/esm/index.js",
+      "@ffmpeg/util": "https://unpkg.com/@ffmpeg/util@0.12.0/dist/esm/index.js",
+      "@xenova/transformers": "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/+esm"
+    }
+  }
+  </script>
+
+  <!-- Update script imports at the end of body -->
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>
 
