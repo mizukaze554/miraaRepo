@@ -26,23 +26,37 @@ export async function initDB() {
 }
 
 export async function saveToIndexedDB(storeName, data) {
+  if (!db) {
+    await initDB();
+  }
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction([storeName], 'readwrite');
-    const store = transaction.objectStore(storeName);
-    const request = store.put(data);
-    
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    try {
+      const transaction = db.transaction([storeName], 'readwrite');
+      const store = transaction.objectStore(storeName);
+      const request = store.put(data);
+      
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    } catch (error) {
+      reject(new Error(`Failed to save to IndexedDB: ${error.message}`));
+    }
   });
 }
 
 export async function getFromIndexedDB(storeName, id) {
+  if (!db) {
+    await initDB();
+  }
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction([storeName], 'readonly');
-    const store = transaction.objectStore(storeName);
-    const request = store.get(id);
-    
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    try {
+      const transaction = db.transaction([storeName], 'readonly');
+      const store = transaction.objectStore(storeName);
+      const request = store.get(id);
+      
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    } catch (error) {
+      reject(new Error(`Failed to get from IndexedDB: ${error.message}`));
+    }
   });
 }

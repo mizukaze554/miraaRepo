@@ -4,7 +4,7 @@ import { initDB, saveToIndexedDB, getFromIndexedDB } from './modules/database.js
 import { approximateVocalIsolation } from './modules/audioProcessor.js';
 import { FFmpegHandler } from './modules/ffmpegHandler.js';
 import { loadTranscriber, transcribeAudioBlob } from './modules/transcriber.js';
-import { createFFmpeg } from '@ffmpeg/ffmpeg';
+import { createFFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.0/dist/ffmpeg.min.js';
 
 let ffmpegHandler;
 let latestAudioBlob = null;
@@ -195,4 +195,12 @@ function setupProcessing() {
 }
 
 // Start the application
-init().catch(console.error);
+(async () => {
+  try {
+    await initDB();
+    await init();
+  } catch (error) {
+    console.error('Application initialization error:', error);
+    setStatus('Error initializing application. Please refresh the page.');
+  }
+})();
