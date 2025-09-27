@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
   <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' cdn.jsdelivr.net esm.sh; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://esm.sh https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' https://esm.sh https://cdn.jsdelivr.net blob:; img-src 'self' blob: data:; style-src-elem 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data: https://cdn.jsdelivr.net https://esm.sh; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://esm.sh https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' https://esm.sh https://cdn.jsdelivr.net blob:; img-src 'self' blob: data:; media-src blob: 'self'; style-src-elem 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'" />
   <style>
     :root{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
     body{max-width:920px;margin:28px auto;padding:18px;background:#f7fafc;color:#0f172a;border-radius:10px}
@@ -131,21 +131,48 @@ fileEl.addEventListener("change", async (ev) => {
   }
 
   try {
+    // Clean up any existing object URL
+    if (preview.src) {
+      URL.revokeObjectURL(preview.src);
+    }
+
+    // Create new object URL
     const url = URL.createObjectURL(f);
-    preview.src = url;
-    preview.style.display = "block";
+    
+    // Set up video element
+    preview.style.display = "none"; // Hide until loaded
     transcriptEl.textContent = "—";
     
-    // Verify the video is loadable
+    // Wait for video to be loadable
     await new Promise((resolve, reject) => {
-      preview.onloadeddata = resolve;
-      preview.onerror = () => reject(new Error('Failed to load video'));
+      const timeoutId = setTimeout(() => {
+        reject(new Error('Video loading timed out'));
+      }, 10000); // 10 second timeout
+
+      preview.onloadeddata = () => {
+        clearTimeout(timeoutId);
+        resolve();
+      };
+      
+      preview.onerror = (e) => {
+        clearTimeout(timeoutId);
+        reject(new Error('Failed to load video: ' + (e.message || 'Unknown error')));
+      };
+
+      preview.src = url;
     });
+
+    // If we get here, video loaded successfully
+    preview.style.display = "block";
   } catch (error) {
     console.error('Video loading error:', error);
-    alert('Error loading video. Please try a different file.');
-    fileEl.value = '';
+    alert('Error loading video. Please try a different file. ' + error.message);
+    if (preview.src) {
+      URL.revokeObjectURL(preview.src);
+    }
+    preview.src = '';
     preview.style.display = "none";
+    fileEl.value = '';
   }
 });
 
