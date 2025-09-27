@@ -481,40 +481,99 @@ document.addEventListener('DOMContentLoaded', () => {
     setStatus(`Transcribing segment ${idx+1}...`);
     setProgress(10);
 
+    function showDetailedError(message, err) {
+      console.error(message, err);
+      transcriptEl.innerHTML = '';
+      const p = document.createElement('div');
+      p.textContent = message;
+      p.style.marginBottom = '8px';
+      transcriptEl.appendChild(p);
+
+      const details = document.createElement('pre');
+      details.style.maxHeight = '240px';
+      details.style.overflow = 'auto';
+      let txt = '';
+      if (err) {
+        if (err.stack) txt = err.stack;
+        else try { txt = JSON.stringify(err, Object.getOwnPropertyNames(err), 2); } catch (_) { txt = String(err); }
+      }
+      details.textContent = txt || '(no additional details)';
+      transcriptEl.appendChild(details);
+
+      const hint = document.createElement('div');
+      hint.style.marginTop = '8px';
+      hint.innerHTML = `<strong>Hints:</strong>
+        <ul>
+          <li>Check browser console for network / CSP errors.</li>
+          <li>Ensure index.html CSP allows script and connect to cdn.jsdelivr.net, esm.sh, unpkg.com.</li>
+          <li>Try a different browser (Chrome/Firefox) or use the Hugging Face Inference API token fallback if available.</li>
+        </ul>`;
+      transcriptEl.appendChild(hint);
+    }
+
     try {
       const seg = segments[idx];
       const wavBlob = await extractAudioSegment(selectedFile, seg.start, seg.duration);
 
-      // Robust dynamic loader: try multiple CDNs and module shapes
+      // Try HF inference first if configured (this logic is elsewhere in file if added)
+      const useHf = document.getElementById('useHf')?.checked;
+      const hfToken = document.getElementById('hfToken')?.value?.trim();
+      const hfModel = document.getElementById('hfModel')?.value || 'openai/whisper-small';
+      if (useHf && hfToken) {
+        try {
+          setStatus('Calling Hugging Face Inference...', 'loading');
+          setProgress(25);
+          const text = await transcribeWithHf(wavBlob, hfModel, hfToken);
+          transcriptText = (text && String(text).trim()) || '[HF returned no text]';
+          transcriptEl.textContent = transcriptText;
+          lastTranscriptWords = transcriptText.trim().split(/\s+/).filter(Boolean);
+          renderSubtitleWords(lastTranscriptWords);
+          setStatus('Transcription (HF) done', 'success');
+          playSegment(idx);
+          setProgress(100);
+          return;
+        } catch (hfErr) {
+          console.warn('HF inference failed, falling back to local model loader', hfErr);
+          setStatus('HF inference failed, falling back...', 'warning');
+          setProgress(10);
+        }
+      }
+
+      // Robust dynamic loader: try multiple ESM/CDN endpoints (including +esm variants)
       setStatus('Loading ASR module (may be large)...');
       setProgress(25);
 
       async function loadTransformersModule() {
         const candidates = [
+          // prefer jsdelivr +esm (works well in many browsers)
           'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/+esm',
+          // fallback to esm.sh
           'https://esm.sh/@xenova/transformers@2.17.2',
-          // last resort: unpkg UMD/ES build (may not be ESM in all cases)
+          // unpkg +esm
+          'https://unpkg.com/@xenova/transformers@2.17.2/+esm',
+          // last resort: UMD/minified (may not be ESM)
           'https://unpkg.com/@xenova/transformers@2.17.2/dist/transformers.min.js'
         ];
         let lastErr = null;
         for (const url of candidates) {
           try {
-            console.log('[Miraa] trying transformers import:', url);
+            console.log('[Miraa] attempting import:', url);
             const mod = await import(/* @vite-ignore */ url);
-            // accept module or default export
+            console.log('[Miraa] import succeeded for', url, 'module keys:', Object.keys(mod || {}));
+            // prefer module that exposes pipeline
             if (mod && (mod.pipeline || (mod.default && mod.default.pipeline))) {
               return mod;
             }
-            // sometimes pipeline is the default export
+            // also accept default export with pipeline
             if (mod && mod.default && typeof mod.default === 'object' && mod.default.pipeline) {
               return mod.default;
             }
-            // if module lacks pipeline, continue trying
-            lastErr = new Error('module has no pipeline export: ' + url);
-            console.warn('[Miraa] module loaded but pipeline missing:', url, mod);
+            // If module loaded but pipeline not found, include diagnostic info in lastErr
+            lastErr = new Error('Module loaded but pipeline export not found: ' + url + ' — exports: ' + Object.keys(mod || {}).join(','));
+            console.warn('[Miraa] module loaded but pipeline missing:', url, Object.keys(mod || {}));
           } catch (err) {
             lastErr = err;
-            console.warn('[Miraa] import failed for', url, err);
+            console.warn('[Miraa] import failed for', url, err && err.message);
           }
         }
         throw lastErr || new Error('No transformers module available');
@@ -524,70 +583,64 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         pipelineMod = await loadTransformersModule();
       } catch (err) {
-        console.error('All transformer imports failed', err);
-        // Provide fallback: let user download the segment audio and explain options
-        const fallbackMsg = 'Automatic transcription unavailable (transformers load failed).';
-        transcriptEl.innerHTML = '';
-        const p = document.createElement('div');
-        p.textContent = fallbackMsg + ' You can download the 10s WAV and transcribe locally, try a different browser, or attempt a microphone-based transcription.';
-        p.style.marginBottom = '8px';
-        transcriptEl.appendChild(p);
+        showDetailedError('All transformer imports failed. See details below.', err);
         setStatus('Transcription unavailable', 'warning');
         setProgress(100);
 
-        // expose download link for wavBlob
+        // provide download link to wavBlob as a convenience
         const url = URL.createObjectURL(wavBlob);
         const dl = document.createElement('a');
         dl.href = url;
         dl.download = `segment-${seg.index || idx+1}.wav`;
         dl.textContent = 'Download segment WAV';
         dl.style.display = 'inline-block';
-        dl.style.marginRight = '12px';
+        dl.style.marginTop = '8px';
         transcriptEl.appendChild(dl);
-
-        // provide microphone-based fallback button if supported
-        const micBtn = document.createElement('button');
-        micBtn.textContent = 'Try Microphone Transcribe';
-        micBtn.className = 'ml-2 px-3 py-1 bg-green-600 text-white rounded text-sm';
-        micBtn.onclick = async () => {
-          micBtn.disabled = true;
-          try {
-            await tryLiveMicTranscribe(wavBlob, seg);
-          } finally {
-            micBtn.disabled = false;
-            // keep the download available
-          }
-        };
-        transcriptEl.appendChild(micBtn);
-
-        // revoke when user leaves after some time
         setTimeout(() => URL.revokeObjectURL(url), 60_000);
         return;
       }
 
-      // Ensure we have pipeline function
+      // Ensure pipeline func is available
       const pipelineFunc = pipelineMod.pipeline || (pipelineMod.default && pipelineMod.default.pipeline);
       if (!pipelineFunc) {
-        throw new Error('pipeline export not found on loaded module');
+        showDetailedError('Loaded module does not expose a pipeline() function. Module exports: ' + Object.keys(pipelineMod || {}).join(','), pipelineMod);
+        setStatus('Transcription unavailable', 'warning');
+        setProgress(100);
+        return;
       }
 
-      // model id from select
+      // Initialize pipeline (catch init errors)
       const modelId = document.getElementById('model').value || 'Xenova/whisper-tiny';
       setStatus('Initializing ASR model...');
       setProgress(50);
 
       let asr;
       try {
-        asr = await pipelineFunc('automatic-speech-recognition', modelId);
+        // provide a simple progress callback to log downloads
+        const progressCallback = (p) => {
+          // p is a number 0..1 or detailed object depending on implementation
+          console.log('[Miraa] model load progress:', p);
+        };
+        asr = await pipelineFunc('automatic-speech-recognition', modelId, { progress_callback: progressCallback });
       } catch (err) {
-        console.error('Failed to initialize pipeline', err);
-        throw err;
+        showDetailedError('Failed to initialize pipeline for model: ' + modelId, err);
+        setStatus('Model init failed', 'error');
+        setProgress(0);
+        return;
       }
 
       setProgress(65);
       setStatus('Running ASR on segment...');
 
-      const res = await asr(wavBlob);
+      let res;
+      try {
+        res = await asr(wavBlob);
+      } catch (err) {
+        showDetailedError('ASR pipeline execution failed', err);
+        setStatus('ASR failed', 'error');
+        setProgress(0);
+        return;
+      }
       console.log('ASR result:', res);
 
       // Extract text from various possible response shapes
@@ -600,10 +653,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (res.text) text = res.text;
         else if (res.generated_text) text = res.generated_text;
         else if (Array.isArray(res) && res.length) {
-          // array of chunks
           text = res.map(r => (r && (r.text || r.generated_text || ''))).join(' ').trim();
         } else {
-          text = String(res);
+          try { text = JSON.stringify(res); } catch (_) { text = String(res); }
         }
       }
 
@@ -617,16 +669,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
       transcriptEl.textContent = transcriptText;
 
-      // prepare words for approximate sync (uniform timing across the segment)
       lastTranscriptWords = transcriptText.trim().split(/\s+/).filter(Boolean);
       renderSubtitleWords(lastTranscriptWords);
 
-      // Auto-play the segment with real-time subtitle highlighting
       playSegment(idx);
-
       setProgress(100);
     } catch (err) {
-      console.error('Transcription error', err);
+      console.error('Transcription error (outer):', err);
       transcriptText = 'Transcription failed: ' + (err.message || err);
       transcriptEl.textContent = transcriptText;
       setStatus('Transcription error', 'error');

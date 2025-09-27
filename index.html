@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
   <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data: https://cdn.jsdelivr.net https://esm.sh https://unpkg.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://cdn.jsdelivr.net https://esm.sh https://unpkg.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self' blob: https://cdn.jsdelivr.net https://esm.sh https://unpkg.com; img-src 'self' blob: data:; media-src blob: 'self'; style-src-elem 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src-attr 'unsafe-inline';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data: https://cdn.jsdelivr.net https://esm.sh https://unpkg.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://cdn.jsdelivr.net https://esm.sh https://unpkg.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self' blob: https://cdn.jsdelivr.net https://esm.sh https://unpkg.com https://api-inference.huggingface.co; img-src 'self' blob: data:; media-src blob: 'self'; style-src-elem 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src-attr 'unsafe-inline';" />
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <style>
     :root {
@@ -399,6 +399,25 @@
               </svg>
             </div>
           </div>
+        </div>
+
+        <div class="space-y-2">
+          <label for="hfToggle" class="block text-sm font-medium text-gray-700">Hugging Face Inference</label>
+          <div class="flex gap-2 items-center">
+            <label class="inline-flex items-center gap-2">
+              <input id="useHf" type="checkbox" class="h-4 w-4" />
+              <span class="text-sm">Use HF Inference API</span>
+            </label>
+            <input id="hfToken" type="password" placeholder="HF API token (optional)" class="flex-1 px-3 py-2 rounded-lg border border-gray-200" />
+          </div>
+          <div class="relative">
+            <select id="hfModel" class="block w-full pl-3 pr-10 py-2.5 text-gray-900 bg-white border border-gray-200 rounded-lg">
+              <option value="openai/whisper-small">whisper-small (recommended)</option>
+              <option value="openai/whisper-medium">whisper-medium</option>
+              <option value="openai/whisper-large-v2">whisper-large-v2</option>
+            </select>
+          </div>
+          <p class="text-xs text-gray-400">If using HF Inference, provide a token and enable the checkbox. Model selection affects accuracy & cost.</p>
         </div>
 
         <div class="md:col-span-2">
