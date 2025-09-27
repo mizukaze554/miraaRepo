@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Video → (Vocal isolate) → Whisper Transcript (Browser)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
+  <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' https://esm.sh; worker-src 'self' blob:; connect-src 'self' https://esm.sh;" />
+  <style>
+    :root{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+    body{max-width:920px;margin:28px auto;padding:18px;background:#f7fafc;color:#0f172a;border-radius:10px}
+    h1{font-size:20px;margin:0 0 8px}
+    p.small{color:#475569;font-size:13px;margin:6px 0 16px}
+    .row{display:flex;gap:12px;align-items:center}
+    .col{display:flex;flex-direction:column;gap:8px}
+    label{font-weight:600}
+    button{padding:10px 12px;border-radius:8px;border:1px solid #cbd5e1;background:white;cursor:pointer}
+    button.primary{background:#0ea5a4;color:white;border:none}
+    pre{white-space:pre-wrap;background:#0f172a;color:#f8fafc;padding:12px;border-radius:8px;border:1px solid #334155}
+    .progress{height:10px;background:#e6eef0;border-radius:6px;overflow:hidden;margin-top:6px}
+    .bar{height:100%;background:#60a5fa;width:0%}
+    input[type=file]{padding:8px}
+    .muted{color:#94a3b8;font-size:13px}
+    .controls{display:flex;gap:10px;flex-wrap:wrap}
+    .note{font-size:13px;color:#334155;background:#eef2ff;padding:8px;border-radius:6px}
+    footer{margin-top:18px;color:#64748b;font-size:13px}
+    .flexspace{display:flex;justify-content:space-between;gap:12px;align-items:center}
+  </style>
+</head>
+<body>
+  <h1>Video → (Optional vocal isolation) → Whisper (in-browser)</h1>
+  <p class="small">Upload a video file, optionally try an approximate vocal isolation, then transcribe locally in your browser. For best results use smaller Whisper models (tiny / tiny.en).</p>
+
+  <div class="col">
+    <label>1) Choose video (mp4/webm/ogg)</label>
+    <input id="videoFile" type="file" accept="video/*" />
+    <video id="preview" controls style="max-width:100%;display:none;margin-top:8px"></video>
+
+    <div style="display:flex;gap:12px;align-items:center;margin-top:8px">
+      <div>
+        <label for="lang">Language</label><br/>
+        <select id="lang">
+          <option value="ja">Japanese (ja)</option>
+          <option value="en">English (en)</option>
+          <option value="auto" selected>Auto / multilingual</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Model size</label><br/>
+        <select id="model">
+          <option value="Xenova/whisper-tiny.en">tiny.en (fast, english)</option>
+          <option value="Xenova/whisper-tiny">tiny (multilingual, fastest)</option>
+          <option value="Xenova/whisper-base">base (more accurate)</option>
+          <option value="Xenova/whisper-small">small (better, slower)</option>
+        </select>
+      </div>
+
+      <div style="display:flex;flex-direction:column">
+        <label>Vocal isolation</label>
+        <input id="isolate" type="checkbox" /> <span class="muted">approximate (center removal)</span>
+      </div>
+    </div>
+
+    <div style="margin-top:12px" class="controls">
+      <button id="startBtn" class="primary">Start: extract → (isolate) → transcribe</button>
+      <button id="downloadAudio" disabled>Download extracted audio</button>
+      <button id="downloadTranscript" disabled>Download transcript</button>
+    </div>
+
+    <div style="margin-top:12px">
+      <div class="muted">Progress</div>
+      <div class="progress" aria-hidden="true"><div id="prog" class="bar"></div></div>
+      <div id="status" style="margin-top:8px" class="muted">Idle</div>
+    </div>
+
+    <div style="margin-top:12px">
+      <label>Transcript</label>
+      <pre id="transcript">—</pre>
+    </div>
+
+    <div style="margin-top:12px" class="note">
+      <strong>Notes:</strong> Models download to your browser. Pick smaller models for speed. Vocal isolation is a simple stereo center-channel subtraction — works best when vocals are mixed center.
+    </div>
+  </div>
+
+  <footer>
+    Built with <strong>ffmpeg.wasm</strong> and <strong>Transformers.js / Xenova</strong>. No server required.
+  </footer>
+
+<script type="module">
+/*
+  vd_to_transcript.html
+  - Uses ffmpeg.wasm to extract audio from an uploaded video file
+  - Optionally runs a simple center-channel subtraction for approximate vocal isolation
+  - Uses Transformers.js / Xenova models for in-browser speech recognition
+  - Save file and open in a modern desktop browser.
+
+  Libraries loaded:
+  - @ffmpeg/ffmpeg (ffmpeg.wasm)
+  - @xenova/transformers (Transformers.js / Xenova)
+*/
+
+// ---------- Helper UI ----------
+const fileEl = document.getElementById("videoFile");
+const preview = document.getElementById("preview");
+const startBtn = document.getElementById("startBtn");
+const statusEl = document.getElementById("status");
+const progBar = document.getElementById("prog");
+const transcriptEl = document.getElementById("transcript");
+const isolateEl = document.getElementById("isolate");
+const langEl = document.getElementById("lang");
+const modelEl = document.getElementById("model");
+const downloadAudioBtn = document.getElementById("downloadAudio");
+const downloadTranscriptBtn = document.getElementById("downloadTranscript");
+
+let latestAudioBlob = null;
+let latestTranscriptText = "";
+
+fileEl.addEventListener("change", (ev) => {
+  const f = ev.target.files?.[0];
+  if (!f) return;
+  preview.src = URL.createObjectURL(f);
+  preview.style.display = "block";
+  transcriptEl.textContent = "—";
+});
+
+// progress helpers
+function setStatus(msg, pct=null) {
+  statusEl.textContent = msg;
+  if (pct !== null) progBar.style.width = Math.min(100, Math.max(0, pct)) + "%";
+}
+
+// ---------- Load libraries (async) ----------
+setStatus("Loading libraries (ffmpeg + transformers)...", 5);
+
+// We'll import ffmpeg.wasm and Xenova transformers from jsdelivr CDN.
+// Note: If you want to host these locally (recommended for production), download the packages and update imports.
+
+import { createFFmpeg, fetchFile } from './js/ffmpeg.js';
+const transformersImportUrl = "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js";
+
+let transformers;
+
+async function loadLibraries() {
+  // Load ffmpeg.wasm
+  try {
+    // FFmpeg is already imported above
+    if (!createFFmpeg || !fetchFile) {
+      throw new Error("FFmpeg failed to load");
+    }
+  } catch (e) {
+    console.error("ffmpeg import failed:", e);
+    setStatus("Error: failed to load ffmpeg.wasm. Check console for details.", 0);
+    throw e;
+  }
+
+  // Load Transformers.js (Xenova)
+  try {
+    transformers = await import(transformersImportUrl);
+  } catch (e) {
+    console.error("transformers import failed:", e);
+    setStatus("Error: failed to load Transformers.js. Check console for details.", 0);
+    throw e;
+  }
+
+  setStatus("Libraries loaded.", 8);
+}
+
+await loadLibraries();
+
+// ---------- ffmpeg setup ----------
+const ffmpeg = createFFmpeg({
+  log: true,
+  progress: ({ ratio }) => {
+    // ratio from 0..1
+    setStatus("ffmpeg processing...", Math.round(8 + ratio * 20));
+  }
+});
+
+async function ensureFFmpegLoaded() {
+  if (!ffmpeg.isLoaded()) {
+    setStatus("Loading ffmpeg core (wasm) — this may take a few seconds...", 10);
+    // We allow ffmpeg to fetch its core files (worker + wasm). If network blocked, this will fail.
+    await ffmpeg.load();
+    setStatus("ffmpeg ready.", 15);
+  }
+}
+
+// ---------- WAV encoder (helper) ----------
+function floatTo16BitPCM(float32Array) {
+  const l = float32Array.length;
+  const buffer = new ArrayBuffer(l * 2);
+  const view = new DataView(buffer);
+  let offset = 0;
+  for (let i = 0; i < l; i++, offset += 2) {
+    let s = Math.max(-1, Math.min(1, float32Array[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return new Uint8Array(buffer);
+}
+
+function encodeWAV(samples, sampleRate, numChannels=1) {
+  // samples: Float32Array (interleaved if numChannels>1)
+  const bytesPerSample = 2;
+  const blockAlign = numChannels * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+
+  /* RIFF identifier */
+  writeString(view, 0, 'RIFF');
+  /* file length */
+  view.setUint32(4, 36 + samples.length * 2, true);
+  /* RIFF type */
+  writeString(view, 8, 'WAVE');
+  /* format chunk identifier */
+  writeString(view, 12, 'fmt ');
+  /* format chunk length */
+  view.setUint32(16, 16, true);
+  /* sample format (raw) */
+  view.setUint16(20, 1, true);
+  /* channel count */
+  view.setUint16(22, numChannels, true);
+  /* sample rate */
+  view.setUint32(24, sampleRate, true);
+  /* byte rate (sampleRate * blockAlign) */
+  view.setUint32(28, sampleRate * blockAlign, true);
+  /* block align (channel count * bytes per sample) */
+  view.setUint16(32, blockAlign, true);
+  /* bits per sample */
+  view.setUint16(34, 16, true);
+  /* data chunk identifier */
+  writeString(view, 36, 'data');
+  /* data chunk length */
+  view.setUint32(40, samples.length * 2, true);
+
+  const pcm = floatTo16BitPCM(samples);
+  for (let i = 0; i < pcm.length; i++) view.setUint8(44 + i, pcm[i]);
+
+  return new Blob([view], { type: 'audio/wav' });
+}
+
+function writeString(view, offset, string) {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
+}
+
+// ---------- Simple center-channel vocal isolation ----------
+async function approximateVocalIsolation(wavArrayBuffer) {
+  // Decode, compute (L - R)/2 to approximately remove center (or isolate center depending)
+  setStatus("Decoding audio for vocal isolation...", 40);
+  const audioCtx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(2, 1, 44100);
+  // Use a temporary offline context: but we need the real length, so decodeAudioData instead:
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const decoded = await ctx.decodeAudioData(wavArrayBuffer.slice(0)); // clone
+  // If mono, nothing to do
+  if (decoded.numberOfChannels < 2) {
+    setStatus("Audio is mono — skipping isolation.", 45);
+    return wavArrayBuffer;
+  }
+  const left = decoded.getChannelData(0);
+  const right = decoded.getChannelData(1);
+  const len = Math.min(left.length, right.length);
+  const out = new Float32Array(len);
+  // center removal (instrumental): out = left - right
+  // center isolation (vocals only): out = (left - right) * 0.5 ??? This approximates difference
+  for (let i = 0; i < len; i++) {
+    out[i] = (left[i] - right[i]) * 0.5;
+  }
+  // Resample to model's 16000 if needed when encoding? We'll keep the original sample rate and let the model accept WAV (models usually accept 16k).
+  const sr = decoded.sampleRate || 44100;
+  // encode to wav
+  const wavBlob = encodeWAV(out, sr, 1);
+  const arr = await wavBlob.arrayBuffer();
+  setStatus("Vocal isolation complete.", 48);
+  try { ctx.close(); } catch(e){}
+  return arr;
+}
+
+// ---------- Run pipeline (Transformers.js) ----------
+async function loadTranscriber(modelId) {
+  setStatus(`Loading model ${modelId} (may be large) — this downloads to your browser...`, 50);
+  // Use transformers.pipeline
+  const { pipeline } = transformers;
+  // Provide progress handler? The library may expose options to track load; we approximate via status messages
+  const transcriber = await pipeline('automatic-speech-recognition', modelId, {
+    // normalize: true,   // optional
+    // You can add options here depending on library features.
+  });
+  setStatus("Model loaded.", 70);
+  return transcriber;
+}
+
+async function transcribeAudioBlob(transcriber, audioBlob, langOption) {
+  setStatus("Preparing audio for transcription...", 72);
+  // Transformers.js typically accepts a File/Blob or audio buffer.
+  // We pass a File-like object.
+  const file = new File([audioBlob], "audio.wav", { type: "audio/wav" });
+
+  setStatus("Transcribing (this may take time)...", 75);
+  // If language option is provided and the model supports forced_decoder_ids, you could pass it here.
+  // Many Xenova models accept an options object for the pipeline call; we'll pass basic options.
+  const result = await transcriber(file, {
+    // chunk_length_s: 30, stride_length_s: 5 // not all pipelines support these options
+    // If user selected language, whisper models can be told to transcribe into a specific language or task.
+    // For now, rely on model auto-detection or model selection (tiny.en for english).
+  });
+  // The pipeline returns { text: "..." } or simple string; adapt:
+  const text = result?.text ?? (typeof result === 'string' ? result : JSON.stringify(result));
+  setStatus("Transcription finished.", 95);
+  return text;
+}
+
+// ---------- Main flow ----------
+startBtn.addEventListener("click", async () => {
+  const f = fileEl.files?.[0];
+  if (!f) { alert("Please choose a video file first."); return; }
+
+  startBtn.disabled = true;
+  setStatus("Starting process...", 2);
+  transcriptEl.textContent = "Working... (follow progress messages)";
+
+  try {
+    await ensureFFmpegLoaded();
+
+    // write file to ffmpeg FS
+    const inputName = "input_vid";
+    const inputExt = f.name.split('.').pop() || 'mp4';
+    const inputFileName = `${inputName}.${inputExt}`;
+    setStatus("Writing video to ffmpeg FS...", 16);
+    ffmpeg.FS('writeFile', inputFileName, await fetchFile(f));
+
+    // Extract audio as stereo WAV (we keep stereo so isolation can work). We'll use 44100 to preserve quality.
+    const outAudioName = "extracted.wav";
+    setStatus("Extracting audio via ffmpeg...", 20);
+    // -vn no video, -ac 2 stereo, -ar 44100 sample rate, pcm_s16le
+    await ffmpeg.run("-y", "-i", inputFileName, "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2", outAudioName);
+
+    // Read output
+    setStatus("Reading extracted audio...", 36);
+    const data = ffmpeg.FS('readFile', outAudioName);
+    const audioArrayBuffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+
+    // optionally approximate vocal isolation
+    let processedAudioBuffer = audioArrayBuffer;
+    if (isolateEl.checked) {
+      setStatus("Running approximate vocal isolation in-browser...", 38);
+      processedAudioBuffer = await approximateVocalIsolation(audioArrayBuffer);
+    }
+
+    // create blob and keep for download
+    latestAudioBlob = new Blob([processedAudioBuffer], { type: "audio/wav" });
+    downloadAudioBtn.disabled = false;
+    downloadAudioBtn.onclick = () => {
+      const url = URL.createObjectURL(latestAudioBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${f.name.replace(/\.[^/.]+$/, "")}_audio.wav`;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    // load model and transcribe
+    // Choose model based on user selection. If language = en and user selected tiny.en, that's ideal.
+    const selectedModel = modelEl.value;
+    const transcriber = await loadTranscriber(selectedModel);
+
+    const text = await transcribeAudioBlob(transcriber, latestAudioBlob, langEl.value);
+    latestTranscriptText = text;
+    transcriptEl.textContent = text || "(no text detected)";
+    downloadTranscriptBtn.disabled = false;
+    downloadTranscriptBtn.onclick = () => {
+      const blob = new Blob([latestTranscriptText], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${f.name.replace(/\.[^/.]+$/, "")}_transcript.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    setStatus("Done ✅", 100);
+  } catch (err) {
+    console.error(err);
+    setStatus("Error: " + (err?.message ?? String(err)), 0);
+    transcriptEl.textContent = "Error — see console.";
+    alert("Error occurred — check console for details.");
+  } finally {
+    startBtn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
