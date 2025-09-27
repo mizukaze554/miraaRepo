@@ -1,11 +1,50 @@
-// Import FFmpeg from CDN with proper CORS and MIME types
-const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg';
-const ffmpegVersion = '0.12.7';
-const coreVersion = '0.12.4';
+class FFmpeg {
+  constructor(options = {}) {
+    this.options = options;
+    this.loaded = false;
+  }
 
-const { createFFmpeg, fetchFile } = await import(`${baseURL}/ffmpeg@${ffmpegVersion}/dist/esm/index.js`);
+  async load() {
+    if (this.loaded) return;
+    
+    try {
+      // Load the core files
+      await Promise.all([
+        fetch('/js/ffmpeg/ffmpeg-core.js'),
+        fetch('/js/ffmpeg/ffmpeg-core.wasm'),
+        fetch('/js/ffmpeg/ffmpeg-core.worker.js')
+      ]);
+      this.loaded = true;
+    } catch (error) {
+      console.error('Failed to load FFmpeg:', error);
+      throw error;
+    }
+  }
 
-// Pre-load the core module
-await import(`${baseURL}/core@${coreVersion}/dist/esm/index.js`);
+  isLoaded() {
+    return this.loaded;
+  }
 
-export { createFFmpeg, fetchFile };
+  async run(...args) {
+    if (!this.loaded) {
+      await this.load();
+    }
+    // Implementation for run
+  }
+
+  FS(operation, ...args) {
+    // Implementation for FS operations
+  }
+}
+
+export function createFFmpeg(options = {}) {
+  return new FFmpeg(options);
+}
+
+export async function fetchFile(file) {
+  if (file instanceof Blob) {
+    return new Uint8Array(await file.arrayBuffer());
+  }
+  const response = await fetch(file);
+  return new Uint8Array(await response.arrayBuffer());
+}

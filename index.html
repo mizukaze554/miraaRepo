@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
   <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://esm.sh https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self' https://esm.sh https://cdn.jsdelivr.net blob:; img-src 'self' blob: data:;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' cdn.jsdelivr.net esm.sh; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://esm.sh https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' https://esm.sh https://cdn.jsdelivr.net blob:; img-src 'self' blob: data:; style-src-elem 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'" />
   <style>
     :root{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
     body{max-width:920px;margin:28px auto;padding:18px;background:#f7fafc;color:#0f172a;border-radius:10px}
@@ -176,9 +176,7 @@ const ffmpeg = createFFmpeg({
   progress: ({ ratio }) => {
     // ratio from 0..1
     setStatus("ffmpeg processing...", Math.round(8 + ratio * 20));
-  },
-  mainName: 'main',
-  canvas: true
+  }
 });
 
 async function ensureFFmpegLoaded() {

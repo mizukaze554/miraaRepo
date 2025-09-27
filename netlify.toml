@@ -4,7 +4,7 @@
     Cross-Origin-Opener-Policy = "same-origin"
     Cross-Origin-Embedder-Policy = "require-corp"
     Access-Control-Allow-Origin = "*"
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://esm.sh https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self' https://esm.sh https://cdn.jsdelivr.net blob:; img-src 'self' blob: data:;"
+    Content-Security-Policy = "default-src 'self' cdn.jsdelivr.net esm.sh; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://esm.sh https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' https://esm.sh https://cdn.jsdelivr.net blob:; img-src 'self' blob: data:; style-src-elem 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'"
     Access-Control-Allow-Methods = "GET, POST, OPTIONS"
     Access-Control-Allow-Headers = "Content-Type, Authorization"
 
