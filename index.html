@@ -176,7 +176,8 @@ const ffmpeg = createFFmpeg({
   progress: ({ ratio }) => {
     // ratio from 0..1
     setStatus("ffmpeg processing...", Math.round(8 + ratio * 20));
-  }
+  },
+  corePath: '/js/ffmpeg/ffmpeg-core.js'
 });
 
 async function ensureFFmpegLoaded() {

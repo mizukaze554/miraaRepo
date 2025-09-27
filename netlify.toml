@@ -1,0 +1,14 @@
+[[headers]]
+  for = "/*"
+    [headers.values]
+    Cross-Origin-Opener-Policy = "same-origin"
+    Cross-Origin-Embedder-Policy = "require-corp"
+    Access-Control-Allow-Origin = "*"
+
+[[headers]]
+  for = "/js/ffmpeg/*"
+    [headers.values]
+    Cross-Origin-Opener-Policy = "same-origin"
+    Cross-Origin-Embedder-Policy = "require-corp"
+    Content-Type = "application/wasm"
+    Access-Control-Allow-Origin = "*"
