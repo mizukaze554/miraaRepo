@@ -12,3 +12,15 @@
     Cross-Origin-Embedder-Policy = "require-corp"
     Content-Type = "application/wasm"
     Access-Control-Allow-Origin = "*"
+
+[[headers]]
+  for = "/*.js"
+    [headers.values]
+    Content-Type = "application/javascript"
+    Access-Control-Allow-Origin = "*"
+
+[[headers]]
+  for = "/*.wasm"
+    [headers.values]
+    Content-Type = "application/wasm"
+    Access-Control-Allow-Origin = "*"
