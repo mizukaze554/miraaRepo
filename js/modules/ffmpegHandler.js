@@ -1,5 +1,6 @@
 // FFmpeg operations and video processing
-import { createFFmpeg } from '@ffmpeg/ffmpeg';
+// Use CDN import (browsers can't resolve bare specifiers like '@ffmpeg/ffmpeg')
+import { createFFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.0/dist/ffmpeg.min.js';
 import {
   isValidUint8Array,
   checkBufferSize,
@@ -170,7 +171,9 @@ export class FFmpegHandler {
 
   async writeFileToFFmpeg(filename, data) {
     try {
-      await this.ffmpeg.FS('writeFile', filename, data);
+      // Ensure we pass a Uint8Array
+      const bytes = (data instanceof Uint8Array) ? data : new Uint8Array(data);
+      await this.ffmpeg.FS('writeFile', filename, bytes);
     } catch (error) {
       throw new Error(`Failed to write file to FFmpeg: ${error.message}`);
     }
@@ -178,8 +181,14 @@ export class FFmpegHandler {
 
   async readFileFromFFmpeg(filename) {
     try {
-      const data = await this.ffmpeg.FS('readFile', filename);
-      return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      // Check existence first
+      try {
+        // Some ffmpeg.wasm builds provide a 'FS' API that throws if file missing
+        const data = await this.ffmpeg.FS('readFile', filename);
+        return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      } catch (e) {
+        throw new Error(`FFmpeg did not produce expected output file: ${filename} — ${e.message}`);
+      }
     } catch (error) {
       throw new Error(`Failed to read file from FFmpeg: ${error.message}`);
     }
@@ -196,5 +205,16 @@ export class FFmpegHandler {
     this.tempFiles = [];
     this.processingAborted = false;
     this.currentOperation = null;
+  }
+
+  // Debug helper: try to list files in FFmpeg FS if available
+  async _listFS() {
+    try {
+      if (!this.ffmpeg || !this.ffmpeg.FS) return null;
+      const files = await this.ffmpeg.FS('readdir', '/');
+      return files;
+    } catch (e) {
+      try { return this.ffmpeg.FS('readdir', '.'); } catch (e2) { return null; }
+    }
   }
 }

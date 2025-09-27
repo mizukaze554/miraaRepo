@@ -4,7 +4,6 @@ import { initDB, saveToIndexedDB, getFromIndexedDB } from './modules/database.js
 import { approximateVocalIsolation } from './modules/audioProcessor.js';
 import { FFmpegHandler } from './modules/ffmpegHandler.js';
 import { loadTranscriber, transcribeAudioBlob } from './modules/transcriber.js';
-import { createFFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.0/dist/ffmpeg.min.js';
 
 let ffmpegHandler;
 let latestAudioBlob = null;
@@ -88,6 +87,9 @@ async function processVideo() {
   try {
     // Process video and extract audio
     const audioArrayBuffer = await ffmpegHandler.processVideo(f);
+    if (!audioArrayBuffer || !(audioArrayBuffer instanceof ArrayBuffer || audioArrayBuffer instanceof Uint8Array)) {
+      throw new Error('FFmpeg did not return audio data (output missing or invalid)');
+    }
 
     // Vocal isolation if requested
     let processedAudioBuffer = audioArrayBuffer;
