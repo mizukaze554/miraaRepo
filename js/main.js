@@ -485,30 +485,95 @@ document.addEventListener('DOMContentLoaded', () => {
       const seg = segments[idx];
       const wavBlob = await extractAudioSegment(selectedFile, seg.start, seg.duration);
 
-      // dynamic import of transformers pipeline from jsdelivr
-      setStatus('Loading ASR model (may be large)...');
-      setProgress(30);
-      let pipelineFunc;
+      // Robust dynamic loader: try multiple CDNs and module shapes
+      setStatus('Loading ASR module (may be large)...');
+      setProgress(25);
+
+      async function loadTransformersModule() {
+        const candidates = [
+          'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/+esm',
+          'https://esm.sh/@xenova/transformers@2.17.2',
+          // last resort: unpkg UMD/ES build (may not be ESM in all cases)
+          'https://unpkg.com/@xenova/transformers@2.17.2/dist/transformers.min.js'
+        ];
+        let lastErr = null;
+        for (const url of candidates) {
+          try {
+            console.log('[Miraa] trying transformers import:', url);
+            const mod = await import(/* @vite-ignore */ url);
+            // accept module or default export
+            if (mod && (mod.pipeline || (mod.default && mod.default.pipeline))) {
+              return mod;
+            }
+            // sometimes pipeline is the default export
+            if (mod && mod.default && typeof mod.default === 'object' && mod.default.pipeline) {
+              return mod.default;
+            }
+            // if module lacks pipeline, continue trying
+            lastErr = new Error('module has no pipeline export: ' + url);
+            console.warn('[Miraa] module loaded but pipeline missing:', url, mod);
+          } catch (err) {
+            lastErr = err;
+            console.warn('[Miraa] import failed for', url, err);
+          }
+        }
+        throw lastErr || new Error('No transformers module available');
+      }
+
+      let pipelineMod;
       try {
-        const mod = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/+esm');
-        pipelineFunc = mod.pipeline;
+        pipelineMod = await loadTransformersModule();
       } catch (err) {
-        console.warn('Transformers import failed', err);
-        const fallback = 'Automatic transcription unavailable (transformers load failed).';
-        transcriptText = fallback;
-        transcriptEl.textContent = fallback;
+        console.error('All transformer imports failed', err);
+        // Provide fallback: let user download the segment audio and explain options
+        const fallbackMsg = 'Automatic transcription unavailable (transformers load failed). You can download the 10s WAV and transcribe locally or try a different browser.';
+        transcriptText = fallbackMsg;
+        transcriptEl.textContent = fallbackMsg;
         setStatus('Transcription unavailable', 'warning');
         setProgress(100);
+
+        // expose download link for wavBlob
+        const url = URL.createObjectURL(wavBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `segment-${seg.index || idx+1}.wav`;
+        a.textContent = 'Download segment WAV';
+        a.style.display = 'inline-block';
+        a.style.marginLeft = '8px';
+        // attach visibly in the transcript area
+        transcriptEl.innerHTML = '';
+        const p = document.createElement('div');
+        p.textContent = fallbackMsg;
+        p.style.marginBottom = '8px';
+        transcriptEl.appendChild(p);
+        transcriptEl.appendChild(a);
+        // revoke when user leaves (not immediate to allow click)
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
         return;
+      }
+
+      // Ensure we have pipeline function
+      const pipelineFunc = pipelineMod.pipeline || (pipelineMod.default && pipelineMod.default.pipeline);
+      if (!pipelineFunc) {
+        throw new Error('pipeline export not found on loaded module');
       }
 
       // model id from select
       const modelId = document.getElementById('model').value || 'Xenova/whisper-tiny';
       setStatus('Initializing ASR model...');
-      const asr = await pipelineFunc('automatic-speech-recognition', modelId);
       setProgress(50);
 
-      // the pipeline accepts File/Blob; pass wavBlob
+      let asr;
+      try {
+        asr = await pipelineFunc('automatic-speech-recognition', modelId);
+      } catch (err) {
+        console.error('Failed to initialize pipeline', err);
+        throw err;
+      }
+
+      setProgress(65);
+      setStatus('Running ASR on segment...');
+
       const res = await asr(wavBlob);
       console.log('ASR result:', res);
 
@@ -523,14 +588,8 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (res.generated_text) text = res.generated_text;
         else if (Array.isArray(res) && res.length) {
           // array of chunks
-          const first = res[0];
-          if (first && (first.text || first.generated_text)) text = first.text || first.generated_text;
-          else {
-            // try to concatenate text-like properties
-            text = res.map(r => (r && (r.text || r.generated_text || '') )).join(' ').trim();
-          }
+          text = res.map(r => (r && (r.text || r.generated_text || ''))).join(' ').trim();
         } else {
-          // last resort: JSON stringify
           text = String(res);
         }
       }
@@ -550,7 +609,6 @@ document.addEventListener('DOMContentLoaded', () => {
       renderSubtitleWords(lastTranscriptWords);
 
       // Auto-play the segment with real-time subtitle highlighting
-      // ensure preview visible and then play synchronized segment
       playSegment(idx);
 
       setProgress(100);
