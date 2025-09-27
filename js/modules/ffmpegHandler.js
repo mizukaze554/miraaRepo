@@ -26,9 +26,22 @@ export class FFmpegHandler {
 
   async init() {
     try {
-      const ffmpegMod = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/ffmpeg.min.js');
-      // Resolve createFFmpeg regardless of module export shape
-      const createFFmpegFn = ffmpegMod.createFFmpeg ?? (ffmpegMod.default && (ffmpegMod.default.createFFmpeg ?? ffmpegMod.default));
+      // Prefer global createFFmpeg (when user includes script tag in HTML)
+      let createFFmpegFn = null;
+      if (typeof window !== 'undefined') {
+        if (typeof window.createFFmpeg === 'function') {
+          createFFmpegFn = window.createFFmpeg;
+        } else if (window.FFmpeg) {
+          // Some UMD builds expose a global FFmpeg object, try common shapes
+          if (typeof window.FFmpeg.createFFmpeg === 'function') createFFmpegFn = window.FFmpeg.createFFmpeg;
+          else if (typeof window.FFmpeg === 'function') createFFmpegFn = window.FFmpeg;
+        }
+      }
+      if (!createFFmpegFn) {
+        // Fallback to dynamic import if global not present
+        const ffmpegMod = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/ffmpeg.min.js');
+        createFFmpegFn = ffmpegMod.createFFmpeg ?? (ffmpegMod.default && (ffmpegMod.default.createFFmpeg ?? ffmpegMod.default));
+      }
       if (!createFFmpegFn) throw new Error('Could not resolve createFFmpeg from @ffmpeg/ffmpeg module');
 
       this.ffmpeg = createFFmpegFn({
