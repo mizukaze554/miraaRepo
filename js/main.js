@@ -506,7 +506,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <ul>
           <li>Check browser console for network / CSP errors.</li>
           <li>Ensure index.html CSP allows script and connect to cdn.jsdelivr.net, esm.sh, unpkg.com.</li>
-          <li>Try a different browser (Chrome/Firefox) or use the Hugging Face Inference API token fallback if available.</li>
+          <li>Try a different browser (Chrome/Firefox) or use the Download WAV option and transcribe externally.</li>
         </ul>`;
       transcriptEl.appendChild(hint);
     }
@@ -515,65 +515,68 @@ document.addEventListener('DOMContentLoaded', () => {
       const seg = segments[idx];
       const wavBlob = await extractAudioSegment(selectedFile, seg.start, seg.duration);
 
-      // Try HF inference first if configured (this logic is elsewhere in file if added)
-      const useHf = document.getElementById('useHf')?.checked;
-      const hfToken = document.getElementById('hfToken')?.value?.trim();
-      const hfModel = document.getElementById('hfModel')?.value || 'openai/whisper-small';
-      if (useHf && hfToken) {
-        try {
-          setStatus('Calling Hugging Face Inference...', 'loading');
-          setProgress(25);
-          const text = await transcribeWithHf(wavBlob, hfModel, hfToken);
-          transcriptText = (text && String(text).trim()) || '[HF returned no text]';
-          transcriptEl.textContent = transcriptText;
-          lastTranscriptWords = transcriptText.trim().split(/\s+/).filter(Boolean);
-          renderSubtitleWords(lastTranscriptWords);
-          setStatus('Transcription (HF) done', 'success');
-          playSegment(idx);
-          setProgress(100);
-          return;
-        } catch (hfErr) {
-          console.warn('HF inference failed, falling back to local model loader', hfErr);
-          setStatus('HF inference failed, falling back...', 'warning');
-          setProgress(10);
-        }
-      }
-
       // Robust dynamic loader: try multiple ESM/CDN endpoints (including +esm variants)
       setStatus('Loading ASR module (may be large)...');
       setProgress(25);
 
       async function loadTransformersModule() {
-        const candidates = [
-          // prefer jsdelivr +esm (works well in many browsers)
+        // Try ESM first (preferred)
+        const esmCandidates = [
           'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/+esm',
-          // fallback to esm.sh
           'https://esm.sh/@xenova/transformers@2.17.2',
-          // unpkg +esm
-          'https://unpkg.com/@xenova/transformers@2.17.2/+esm',
-          // last resort: UMD/minified (may not be ESM)
-          'https://unpkg.com/@xenova/transformers@2.17.2/dist/transformers.min.js'
+          'https://unpkg.com/@xenova/transformers@2.17.2/+esm'
         ];
         let lastErr = null;
-        for (const url of candidates) {
+        for (const url of esmCandidates) {
           try {
-            console.log('[Miraa] attempting import:', url);
+            console.log('[Miraa] attempting ESM import:', url);
             const mod = await import(/* @vite-ignore */ url);
-            console.log('[Miraa] import succeeded for', url, 'module keys:', Object.keys(mod || {}));
-            // prefer module that exposes pipeline
-            if (mod && (mod.pipeline || (mod.default && mod.default.pipeline))) {
-              return mod;
-            }
-            // also accept default export with pipeline
-            if (mod && mod.default && typeof mod.default === 'object' && mod.default.pipeline) {
-              return mod.default;
-            }
-            // If module loaded but pipeline not found, include diagnostic info in lastErr
-            lastErr = new Error('Module loaded but pipeline export not found: ' + url + ' — exports: ' + Object.keys(mod || {}).join(','));
-            console.warn('[Miraa] module loaded but pipeline missing:', url, Object.keys(mod || {}));
+            console.log('[Miraa] ESM import succeeded for', url, 'exports:', Object.keys(mod || {}));
+            if (mod && (mod.pipeline || (mod.default && mod.default.pipeline))) return mod;
+            if (mod && mod.default && typeof mod.default === 'object' && mod.default.pipeline) return mod.default;
+            lastErr = new Error('ESM module loaded but pipeline export not found: ' + url + ' — exports: ' + Object.keys(mod || {}).join(','));
           } catch (err) {
             lastErr = err;
-            console.warn('[Miraa] import failed for', url, err && err.message);
+            console.warn('[Miraa] ESM import failed for', url, err && err.message);
+          }
+        }
+
+        // If ESM failed, try injecting a UMD/UMD-like script and wait for a global.
+        const umdCandidates = [
+          'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js',
+          'https://unpkg.com/@xenova/transformers@2.17.2/dist/transformers.min.js'
+        ];
+        for (const url of umdCandidates) {
+          try {
+            console.log('[Miraa] attempting UMD script injection:', url);
+            await new Promise((res, rej) => {
+              // If already loaded, resolve immediately
+              if (window.transformers || window.Transformers || window.xenovaTransformers) return res();
+              const s = document.createElement('script');
+              s.src = url;
+              s.async = true;
+              s.onload = () => setTimeout(res, 50); // slight delay to allow global to initialize
+              s.onerror = (e) => rej(new Error('Script load error: ' + url));
+              document.head.appendChild(s);
+              // safety timeout
+              setTimeout(() => rej(new Error('Script load timeout: ' + url)), 20000);
+            });
+            // attempt to find pipeline on known globals
+            const globalMod = window.transformers || window.Transformers || window.xenovaTransformers || window['@xenova/transformers'] || null;
+            if (globalMod) {
+              console.log('[Miraa] found global transformers object after script injection:', Object.keys(globalMod || {}));
+              // If the global itself is the pipeline factory
+              if (typeof globalMod.pipeline === 'function') return globalMod;
+              // Some UMD builds may set a default property
+              if (globalMod.default && typeof globalMod.default.pipeline === 'function') return globalMod.default;
+              lastErr = new Error('UMD script loaded but pipeline not found on global: ' + url + ' — keys: ' + Object.keys(globalMod || {}).join(','));
+              continue;
+            } else {
+              lastErr = new Error('UMD script loaded but no known global was found: ' + url);
+            }
+          } catch (err) {
+            lastErr = err;
+            console.warn('[Miraa] UMD injection failed for', url, err && err.message);
           }
         }
         throw lastErr || new Error('No transformers module available');
@@ -609,18 +612,14 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // Initialize pipeline (catch init errors)
+      // model id from select
       const modelId = document.getElementById('model').value || 'Xenova/whisper-tiny';
       setStatus('Initializing ASR model...');
       setProgress(50);
 
       let asr;
       try {
-        // provide a simple progress callback to log downloads
-        const progressCallback = (p) => {
-          // p is a number 0..1 or detailed object depending on implementation
-          console.log('[Miraa] model load progress:', p);
-        };
+        const progressCallback = (p) => { console.log('[Miraa] model load progress:', p); };
         asr = await pipelineFunc('automatic-speech-recognition', modelId, { progress_callback: progressCallback });
       } catch (err) {
         showDetailedError('Failed to initialize pipeline for model: ' + modelId, err);
