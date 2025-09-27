@@ -7,100 +7,388 @@
   <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
   <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data: https://cdn.jsdelivr.net https://esm.sh; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://esm.sh https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' https://esm.sh https://cdn.jsdelivr.net blob:; img-src 'self' blob: data:; media-src blob: 'self'; style-src-elem 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'" />
-  <style>
-    :root{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
-    body{max-width:920px;margin:28px auto;padding:18px;background:#f7fafc;color:#0f172a;border-radius:10px}
-    h1{font-size:20px;margin:0 0 8px}
-    p.small{color:#475569;font-size:13px;margin:6px 0 16px}
-    .row{display:flex;gap:12px;align-items:center}
-    .col{display:flex;flex-direction:column;gap:8px}
-    label{font-weight:600}
-    button{padding:10px 12px;border-radius:8px;border:1px solid #cbd5e1;background:white;cursor:pointer}
-    button.primary{background:#0ea5a4;color:white;border:none}
-    pre{white-space:pre-wrap;background:#0f172a;color:#f8fafc;padding:12px;border-radius:8px;border:1px solid #334155}
-    .progress{height:10px;background:#e6eef0;border-radius:6px;overflow:hidden;margin-top:6px}
-    .bar{height:100%;background:#60a5fa;width:0%}
-    input[type=file]{padding:8px}
-    .muted{color:#94a3b8;font-size:13px}
-    .controls{display:flex;gap:10px;flex-wrap:wrap}
-    .note{font-size:13px;color:#334155;background:#eef2ff;padding:8px;border-radius:6px}
-    footer{margin-top:18px;color:#64748b;font-size:13px}
-    .flexspace{display:flex;justify-content:space-between;gap:12px;align-items:center}
+  <link rel="stylesheet" href="css/enhanced-ui.css" />
+    :root {
+      --primary-color: #0ea5a4;
+      --error-color: #ef4444;
+      --warning-color: #f59e0b;
+      --success-color: #10b981;
+      --bg-color: #f7fafc;
+      --text-color: #0f172a;
+      --border-color: #cbd5e1;
+      --muted-color: #94a3b8;
+      --shadow-color: rgba(0, 0, 0, 0.1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+      max-width: 920px;
+      margin: 28px auto;
+      padding: 24px;
+      background: var(--bg-color);
+      color: var(--text-color);
+      line-height: 1.5;
+    }
+
+    .container {
+      background: white;
+      padding: 32px;
+      border-radius: 16px;
+      box-shadow: 0 4px 6px var(--shadow-color);
+    }
+
+    h1 {
+      font-size: 24px;
+      margin: 0 0 16px;
+      color: var(--text-color);
+    }
+
+    p.small {
+      color: var(--muted-color);
+      font-size: 14px;
+      margin: 8px 0 24px;
+    }
+
+    .row {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .col {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    label {
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text-color);
+      margin-bottom: 4px;
+    }
+
+    select, input[type="file"] {
+      padding: 10px;
+      border-radius: 8px;
+      border: 2px solid var(--border-color);
+      background: white;
+      font-size: 14px;
+      transition: all 0.2s ease;
+    }
+
+    select:hover, input[type="file"]:hover {
+      border-color: var(--primary-color);
+    }
+
+    button {
+      padding: 12px 20px;
+      border-radius: 8px;
+      border: 2px solid var(--border-color);
+      background: white;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 2px 4px var(--shadow-color);
+    }
+
+    button.primary {
+      background: var(--primary-color);
+      color: white;
+      border: none;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      background: var(--text-color);
+      color: white;
+      padding: 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.6;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .progress-container {
+      margin: 24px 0;
+      background: #f1f5f9;
+      padding: 16px;
+      border-radius: 12px;
+    }
+
+    .progress {
+      height: 8px;
+      background: #e2e8f0;
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 8px 0;
+    }
+
+    .bar {
+      height: 100%;
+      background: var(--primary-color);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    .status {
+      font-size: 14px;
+      color: var(--muted-color);
+      margin-top: 8px;
+      transition: all 0.3s ease;
+    }
+
+    .status.error { color: var(--error-color); }
+    .status.warning { color: var(--warning-color); }
+    .status.success { color: var(--success-color); }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 24px 0;
+    }
+
+    .note {
+      font-size: 14px;
+      color: var(--text-color);
+      background: #f8fafc;
+      padding: 16px;
+      border-radius: 12px;
+      border-left: 4px solid var(--primary-color);
+      margin: 24px 0;
+    }
+
+    footer {
+      margin-top: 32px;
+      color: var(--muted-color);
+      font-size: 14px;
+      text-align: center;
+    }
+
+    /* Error Modal Styles */
+    .error-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      z-index: 1000;
+    }
+
+    .error-modal.show {
+      opacity: 1;
+    }
+
+    .error-modal.fade-out {
+      opacity: 0;
+    }
+
+    .error-modal-content {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 480px;
+      width: 90%;
+      transform: translateY(20px);
+      transition: transform 0.3s ease;
+    }
+
+    .error-modal.show .error-modal-content {
+      transform: translateY(0);
+    }
+
+    .error-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .error-modal-header h3 {
+      margin: 0;
+      color: var(--error-color);
+    }
+
+    .close-button {
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 4px;
+      color: var(--muted-color);
+    }
+
+    .error-modal-body {
+      margin-bottom: 24px;
+    }
+
+    .error-modal-footer {
+      text-align: right;
+    }
+
+    /* Video Preview Styles */
+    #preview {
+      width: 100%;
+      max-height: 400px;
+      border-radius: 12px;
+      margin: 16px 0;
+      background: black;
+    }
+
+    /* Checkbox Styles */
+    .checkbox-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--primary-color);
+    }
+
+    /* Loading Animation */
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+
+    .loading {
+      animation: pulse 1.5s infinite;
   </style>
 </head>
 <body>
   <h1>Video → (Optional vocal isolation) → Whisper (in-browser)</h1>
   <p class="small">Upload a video file, optionally try an approximate vocal isolation, then transcribe locally in your browser. For best results use smaller Whisper models (tiny / tiny.en).</p>
 
-  <div class="col">
-    <label>1) Choose video (mp4/webm/ogg)</label>
-    <input id="videoFile" type="file" accept="video/*" />
-    <video id="preview" controls style="max-width:100%;display:none;margin-top:8px"></video>
-
-    <div style="display:flex;gap:12px;align-items:center;margin-top:8px">
-      <div>
-        <label for="lang">Language</label><br/>
-        <select id="lang">
-          <option value="ja">Japanese (ja)</option>
-          <option value="en">English (en)</option>
-          <option value="auto" selected>Auto / multilingual</option>
-        </select>
+  <div class="container">
+    <div class="progress-steps">
+      <div class="progress-step" data-step="1">
+        <span class="step-number">1</span>
+        <span>Choose Video</span>
       </div>
-
-      <div>
-        <label>Model size</label><br/>
-        <select id="model">
-          <option value="Xenova/whisper-tiny.en">tiny.en (fast, english)</option>
-          <option value="Xenova/whisper-tiny">tiny (multilingual, fastest)</option>
-          <option value="Xenova/whisper-base">base (more accurate)</option>
-          <option value="Xenova/whisper-small">small (better, slower)</option>
-        </select>
+      <div class="progress-step" data-step="2">
+        <span class="step-number">2</span>
+        <span>Configure</span>
       </div>
-
-      <div style="display:flex;flex-direction:column">
-        <label>Vocal isolation</label>
-        <input id="isolate" type="checkbox" /> <span class="muted">approximate (center removal)</span>
+      <div class="progress-step" data-step="3">
+        <span class="step-number">3</span>
+        <span>Process</span>
       </div>
     </div>
 
-    <div style="margin-top:12px" class="controls">
-      <button id="startBtn" class="primary">Start: extract → (isolate) → transcribe</button>
-      <button id="downloadAudio" disabled>Download extracted audio</button>
-      <button id="downloadTranscript" disabled>Download transcript</button>
-    </div>
+    <div class="col">
+      <div class="section">
+        <label>Choose video file (mp4/webm/ogg)</label>
+        <input id="videoFile" type="file" accept="video/*" />
+        <video id="preview" controls></video>
+      </div>
 
-    <div style="margin-top:12px">
-      <div class="muted">Progress</div>
-      <div class="progress" aria-hidden="true"><div id="prog" class="bar"></div></div>
-      <div id="status" style="margin-top:8px" class="muted">Idle</div>
-    </div>
+      <div class="section options-grid">
+        <div class="option-group">
+          <label for="lang">Language</label>
+          <select id="lang" class="enhanced-select">
+            <option value="ja">Japanese (ja)</option>
+            <option value="en">English (en)</option>
+            <option value="auto" selected>Auto / multilingual</option>
+          </select>
+        </div>
 
-    <div style="margin-top:12px">
-      <label>Transcript</label>
-      <pre id="transcript">—</pre>
-    </div>
+        <div class="option-group">
+          <label>Model size</label>
+          <select id="model" class="enhanced-select">
+            <option value="Xenova/whisper-tiny.en">tiny.en (fast, english)</option>
+            <option value="Xenova/whisper-tiny">tiny (multilingual, fastest)</option>
+            <option value="Xenova/whisper-base">base (more accurate)</option>
+            <option value="Xenova/whisper-small">small (better, slower)</option>
+          </select>
+        </div>
 
-    <div style="margin-top:12px" class="note">
-      <strong>Notes:</strong> Models download to your browser. Pick smaller models for speed. Vocal isolation is a simple stereo center-channel subtraction — works best when vocals are mixed center.
+        <div class="option-group checkbox-wrapper">
+          <label>
+            <input id="isolate" type="checkbox" />
+            Vocal isolation
+          </label>
+          <span class="muted">approximate (center removal)</span>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="startBtn" class="primary" title="Start processing">
+          Start: extract → (isolate) → transcribe
+        </button>
+        <button id="downloadAudio" disabled title="Download processed audio">
+          Download extracted audio
+        </button>
+        <button id="downloadTranscript" disabled title="Download transcript">
+          Download transcript
+        </button>
+      </div>
+
+      <div class="progress-container">
+        <div class="progress-header">
+          <span class="progress-label">Progress</span>
+          <span id="status" class="status">Idle</span>
+        </div>
+        <div class="progress" aria-hidden="true">
+          <div id="prog" class="bar"></div>
+        </div>
+      </div>
+
+      <div class="transcript-section">
+        <label>Transcript</label>
+        <pre id="transcript" class="transcript-content">—</pre>
+      </div>
+
+      <div class="note">
+        <strong>Notes:</strong>
+        <ul>
+          <li>Models download to your browser. Pick smaller models for speed.</li>
+          <li>Vocal isolation is a simple stereo center-channel subtraction — works best when vocals are mixed center.</li>
+        </ul>
+      </div>
     </div>
   </div>
 
   <footer>
-    Built with <strong>ffmpeg.wasm</strong> and <strong>Transformers.js / Xenova</strong>. No server required.
+    <p>Built with <strong>ffmpeg.wasm</strong> and <strong>Transformers.js / Xenova</strong></p>
+    <p class="muted">No server required - all processing happens in your browser</p>
   </footer>
 
-<script type="module">
-/*
-  vd_to_transcript.html
-  - Uses ffmpeg.wasm to extract audio from an uploaded video file
-  - Optionally runs a simple center-channel subtraction for approximate vocal isolation
-  - Uses Transformers.js / Xenova models for in-browser speech recognition
-  - Save file and open in a modern desktop browser.
-
-  Libraries loaded:
-  - @ffmpeg/ffmpeg (ffmpeg.wasm)
-  - @xenova/transformers (Transformers.js / Xenova)
-*/
+<script src="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js"></script>
+<script type="module" src="js/main.js"></script>
 
 // ---------- IndexedDB Setup ----------
 const DB_NAME = 'videoTranscriptDB';

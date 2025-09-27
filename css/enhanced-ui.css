@@ -1,0 +1,132 @@
+  /* Enhanced UI Styles */
+  .drop-zone {
+    border: 2px dashed var(--border-color);
+    border-radius: 12px;
+    padding: 32px;
+    text-align: center;
+    margin: 16px 0;
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+
+  .drop-zone:hover {
+    border-color: var(--primary-color);
+    background: #f8fafc;
+  }
+
+  .drop-zone.drag-over {
+    border-color: var(--primary-color);
+    background: #f0f9ff;
+  }
+
+  .drop-zone-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .drop-zone-content span {
+    color: var(--text-color);
+  }
+
+  .drop-zone-content .small {
+    color: var(--muted-color);
+    font-size: 14px;
+  }
+
+  /* Hide default file input */
+  input[type="file"] {
+    display: none;
+  }
+
+  /* Enhanced Select Styles */
+  .enhanced-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 40px !important;
+  }
+
+  /* Loading Spinner */
+  .loading-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 8px;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* Button States */
+  .button.loading {
+    opacity: 0.8;
+    cursor: wait;
+  }
+
+  /* Status Icons */
+  .status::before {
+    margin-right: 8px;
+  }
+
+  .status.error::before {
+    content: '❌';
+  }
+
+  .status.warning::before {
+    content: '⚠️';
+  }
+
+  .status.success::before {
+    content: '✅';
+  }
+
+  /* Progress Steps */
+  .progress-steps {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  .progress-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted-color);
+    font-size: 14px;
+  }
+
+  .progress-step.active {
+    color: var(--primary-color);
+    font-weight: 600;
+  }
+
+  .progress-step.complete {
+    color: var(--success-color);
+  }
+
+  /* Tooltips */
+  [title] {
+    position: relative;
+  }
+
+  [title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 10;
+  }
