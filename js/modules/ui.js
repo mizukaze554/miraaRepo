@@ -21,23 +21,40 @@ const errorHandler = new ErrorHandler(elements.statusEl, elements.transcriptEl);
 
 export function setStatus(msg, pct = null, type = 'normal') {
   elements.statusEl.textContent = msg;
-  elements.statusEl.className = 'status ' + type;
+  
+  // Reset classes
+  elements.statusEl.className = 'text-sm transition-all duration-300';
+  
+  // Add type-specific classes
+  switch (type) {
+    case 'error':
+      elements.statusEl.classList.add('text-red-600');
+      break;
+    case 'warning':
+      elements.statusEl.classList.add('text-amber-600');
+      break;
+    case 'success':
+      elements.statusEl.classList.add('text-emerald-600');
+      break;
+    default:
+      elements.statusEl.classList.add('text-gray-600');
+  }
   
   if (pct !== null) {
     const width = Math.min(100, Math.max(0, pct));
     elements.progBar.style.width = width + "%";
     
-    // Add loading animation when in progress
+    // Add loading state
     if (width > 0 && width < 100) {
-      elements.statusEl.classList.add('loading');
+      elements.statusEl.classList.add('animate-pulse');
     } else {
-      elements.statusEl.classList.remove('loading');
+      elements.statusEl.classList.remove('animate-pulse');
     }
   }
 
   // Show success state when complete
   if (pct === 100) {
-    elements.statusEl.className = 'status success';
+    elements.statusEl.className = 'text-sm text-emerald-600 font-medium';
   }
 }
 

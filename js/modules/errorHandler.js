@@ -34,18 +34,22 @@ export class ErrorHandler {
 
   showErrorModal(message) {
     const modal = document.createElement('div');
-    modal.className = 'error-modal';
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 opacity-0 transition-opacity duration-300';
     modal.innerHTML = `
-      <div class="error-modal-content">
-        <div class="error-modal-header">
-          <h3>⚠️ Error</h3>
-          <button class="close-button">&times;</button>
+      <div class="bg-white rounded-lg max-w-md w-11/12 transform transition-transform duration-300 scale-95">
+        <div class="flex items-center justify-between p-4 border-b border-gray-200">
+          <h3 class="text-lg font-semibold text-red-600 flex items-center">
+            <span class="mr-2">⚠️</span> Error
+          </h3>
+          <button class="text-gray-400 hover:text-gray-600 transition-colors text-2xl leading-none">&times;</button>
         </div>
-        <div class="error-modal-body">
-          <p>${message}</p>
+        <div class="p-4">
+          <p class="text-gray-700">${message}</p>
         </div>
-        <div class="error-modal-footer">
-          <button class="error-modal-close">Close</button>
+        <div class="flex justify-end p-4 border-t border-gray-200">
+          <button class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg transition-colors">
+            Close
+          </button>
         </div>
       </div>
     `;

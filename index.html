@@ -6,8 +6,32 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
   <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data: https://cdn.jsdelivr.net https://esm.sh; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://esm.sh https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' https://esm.sh https://cdn.jsdelivr.net blob:; img-src 'self' blob: data:; media-src blob: 'self'; style-src-elem 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'" />
-  <link rel="stylesheet" href="css/enhanced-ui.css" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data: https://cdn.jsdelivr.net https://esm.sh; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://esm.sh https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self' https://esm.sh https://cdn.jsdelivr.net blob:; img-src 'self' blob: data:; media-src blob: 'self'; style-src-elem 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src-attr 'unsafe-inline'" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              DEFAULT: '#0ea5a4',
+              dark: '#0c8483',
+            }
+          },
+          animation: {
+            'progress': 'progress 1s ease infinite',
+            'spin-slow': 'spin 3s linear infinite',
+          },
+          keyframes: {
+            progress: {
+              '0%': { width: '0%' },
+              '100%': { width: '100%' },
+            }
+          }
+        }
+      }
+    }
+  </script>
     :root {
       --primary-color: #0ea5a4;
       --error-color: #ef4444;
@@ -293,42 +317,51 @@
   <h1>Video → (Optional vocal isolation) → Whisper (in-browser)</h1>
   <p class="small">Upload a video file, optionally try an approximate vocal isolation, then transcribe locally in your browser. For best results use smaller Whisper models (tiny / tiny.en).</p>
 
-  <div class="container">
-    <div class="progress-steps">
-      <div class="progress-step" data-step="1">
-        <span class="step-number">1</span>
-        <span>Choose Video</span>
+  <div class="max-w-4xl mx-auto p-6 bg-white rounded-xl shadow-lg">
+    <!-- Progress Steps -->
+    <div class="flex justify-between mb-8">
+      <div class="flex items-center space-x-2 text-sm">
+        <span class="w-8 h-8 flex items-center justify-center rounded-full bg-primary text-white font-semibold">1</span>
+        <span class="font-medium">Choose Video</span>
       </div>
-      <div class="progress-step" data-step="2">
-        <span class="step-number">2</span>
-        <span>Configure</span>
+      <div class="flex items-center space-x-2 text-sm">
+        <span class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 text-gray-600 font-semibold">2</span>
+        <span class="text-gray-600">Configure</span>
       </div>
-      <div class="progress-step" data-step="3">
-        <span class="step-number">3</span>
-        <span>Process</span>
+      <div class="flex items-center space-x-2 text-sm">
+        <span class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 text-gray-600 font-semibold">3</span>
+        <span class="text-gray-600">Process</span>
       </div>
     </div>
 
-    <div class="col">
-      <div class="section">
-        <label>Choose video file (mp4/webm/ogg)</label>
-        <input id="videoFile" type="file" accept="video/*" />
-        <video id="preview" controls></video>
+    <div class="space-y-6">
+      <!-- File Upload Section -->
+      <div class="space-y-4">
+        <label class="block text-sm font-semibold text-gray-700">Choose video file (mp4/webm/ogg)</label>
+        <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary transition-colors cursor-pointer">
+          <input id="videoFile" type="file" accept="video/*" class="hidden" />
+          <div class="space-y-2">
+            <p class="text-gray-600">Drop your video file here or</p>
+            <button class="text-primary hover:text-primary-dark font-medium">Browse files</button>
+          </div>
+        </div>
+        <video id="preview" controls class="w-full rounded-lg bg-black hidden"></video>
       </div>
 
-      <div class="section options-grid">
-        <div class="option-group">
-          <label for="lang">Language</label>
-          <select id="lang" class="enhanced-select">
+      <!-- Options Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="space-y-2">
+          <label for="lang" class="block text-sm font-semibold text-gray-700">Language</label>
+          <select id="lang" class="w-full rounded-lg border-gray-300 shadow-sm focus:border-primary focus:ring-primary">
             <option value="ja">Japanese (ja)</option>
             <option value="en">English (en)</option>
             <option value="auto" selected>Auto / multilingual</option>
           </select>
         </div>
 
-        <div class="option-group">
-          <label>Model size</label>
-          <select id="model" class="enhanced-select">
+        <div class="space-y-2">
+          <label for="model" class="block text-sm font-semibold text-gray-700">Model size</label>
+          <select id="model" class="w-full rounded-lg border-gray-300 shadow-sm focus:border-primary focus:ring-primary">
             <option value="Xenova/whisper-tiny.en">tiny.en (fast, english)</option>
             <option value="Xenova/whisper-tiny">tiny (multilingual, fastest)</option>
             <option value="Xenova/whisper-base">base (more accurate)</option>
@@ -336,45 +369,49 @@
           </select>
         </div>
 
-        <div class="option-group checkbox-wrapper">
-          <label>
-            <input id="isolate" type="checkbox" />
-            Vocal isolation
+        <div class="flex items-center space-x-3">
+          <label class="inline-flex items-center cursor-pointer">
+            <input id="isolate" type="checkbox" class="rounded border-gray-300 text-primary focus:ring-primary" />
+            <span class="ml-2 text-sm font-semibold text-gray-700">Vocal isolation</span>
           </label>
-          <span class="muted">approximate (center removal)</span>
+          <span class="text-sm text-gray-500">(center removal)</span>
         </div>
       </div>
 
-      <div class="controls">
-        <button id="startBtn" class="primary" title="Start processing">
+      <!-- Action Buttons -->
+      <div class="flex flex-wrap gap-4">
+        <button id="startBtn" class="bg-primary hover:bg-primary-dark text-white px-6 py-2 rounded-lg font-medium transition-colors shadow-sm">
           Start: extract → (isolate) → transcribe
         </button>
-        <button id="downloadAudio" disabled title="Download processed audio">
+        <button id="downloadAudio" disabled class="bg-white text-gray-700 px-6 py-2 rounded-lg font-medium border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
           Download extracted audio
         </button>
-        <button id="downloadTranscript" disabled title="Download transcript">
+        <button id="downloadTranscript" disabled class="bg-white text-gray-700 px-6 py-2 rounded-lg font-medium border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
           Download transcript
         </button>
       </div>
 
-      <div class="progress-container">
-        <div class="progress-header">
-          <span class="progress-label">Progress</span>
-          <span id="status" class="status">Idle</span>
+      <!-- Progress Section -->
+      <div class="bg-gray-50 rounded-lg p-4 space-y-3">
+        <div class="flex justify-between items-center">
+          <span class="text-sm font-medium text-gray-700">Progress</span>
+          <span id="status" class="text-sm text-gray-600">Idle</span>
         </div>
-        <div class="progress" aria-hidden="true">
-          <div id="prog" class="bar"></div>
+        <div class="h-2 bg-gray-200 rounded overflow-hidden">
+          <div id="prog" class="h-full bg-primary transition-all duration-300" style="width: 0%"></div>
         </div>
       </div>
 
-      <div class="transcript-section">
-        <label>Transcript</label>
-        <pre id="transcript" class="transcript-content">—</pre>
+      <!-- Transcript Section -->
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-gray-700">Transcript</label>
+        <pre id="transcript" class="w-full bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-sm">—</pre>
       </div>
 
-      <div class="note">
-        <strong>Notes:</strong>
-        <ul>
+      <!-- Notes Section -->
+      <div class="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
+        <p class="font-semibold text-blue-900 mb-2">Notes:</p>
+        <ul class="list-disc list-inside text-sm text-blue-800 space-y-1">
           <li>Models download to your browser. Pick smaller models for speed.</li>
           <li>Vocal isolation is a simple stereo center-channel subtraction — works best when vocals are mixed center.</li>
         </ul>
@@ -382,9 +419,9 @@
     </div>
   </div>
 
-  <footer>
-    <p>Built with <strong>ffmpeg.wasm</strong> and <strong>Transformers.js / Xenova</strong></p>
-    <p class="muted">No server required - all processing happens in your browser</p>
+  <footer class="mt-8 text-center space-y-2">
+    <p class="text-gray-700">Built with <strong>ffmpeg.wasm</strong> and <strong>Transformers.js / Xenova</strong></p>
+    <p class="text-sm text-gray-500">No server required - all processing happens in your browser</p>
   </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js"></script>
