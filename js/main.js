@@ -191,7 +191,16 @@ document.addEventListener('DOMContentLoaded', () => {
       mimeType = '';
     }
 
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    // Use only audio tracks for MediaRecorder (video track causes "audio type" errors)
+    const audioTracks = stream.getAudioTracks();
+    if (!audioTracks || audioTracks.length === 0) {
+      v.remove();
+      URL.revokeObjectURL(fileUrl);
+      throw new Error('No audio track found in the video.');
+    }
+    const audioStream = new MediaStream(audioTracks);
+    const recorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
+    
     const chunks = [];
     recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
 
