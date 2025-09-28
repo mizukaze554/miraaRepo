@@ -9,36 +9,28 @@
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
-    /* Jade accent */
     :root {
       --jade: #00a86b;
       --bg: #0b0b0b;
       --panel: #0f0f0f;
       --muted: #9b9b9b;
     }
-
     body {
       background: var(--bg);
       color: #fff;
       -webkit-font-smoothing:antialiased;
       -moz-osx-font-smoothing:grayscale;
     }
-
-    /* Minimal controls */
     .card {
       background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
       border: 1px solid rgba(255,255,255,0.04);
       box-shadow: 0 6px 18px rgba(0,0,0,0.6);
     }
-
-    /* subtitle styling */
     .subtitle {
       font-size: 1.02rem;
       line-height: 1.4;
       color: #eee;
     }
-
-    /* small brand mark */
     .brand {
       color: var(--jade);
       font-weight: 600;
@@ -57,27 +49,20 @@
           <div class="text-sm text-[var(--muted)]">Progressive local transcription</div>
         </div>
       </div>
-
       <div class="text-right">
         <div class="brand">jade</div>
       </div>
     </header>
 
-    <!-- main card -->
     <div class="card p-5 rounded-lg">
-
       <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <!-- left column: controls -->
+        <!-- Controls -->
         <div class="md:col-span-1 space-y-4">
           <label class="block text-sm text-[var(--muted)]">Upload a video file</label>
           <input id="fileInput" type="file" accept="video/*" class="w-full text-sm" />
-
           <div class="mt-3">
-            <button id="startBtn" class="w-full bg-[var(--jade)] text-black py-2 rounded hover:opacity-90">
-              Start Transcription
-            </button>
+            <button id="startBtn" class="w-full bg-[var(--jade)] text-black py-2 rounded hover:opacity-90">Start Transcription</button>
           </div>
-
           <div class="mt-3 text-xs text-[var(--muted)]">
             Notes:
             <ul class="list-disc ml-4 mt-1">
@@ -86,7 +71,6 @@
               <li>Transcription streams progressively.</li>
             </ul>
           </div>
-
           <div class="mt-3">
             <div id="status" class="text-sm text-[var(--muted)]">Idle</div>
             <div id="progressBar" class="w-full h-2 bg-gray-800 rounded mt-2 overflow-hidden">
@@ -96,26 +80,22 @@
           </div>
         </div>
 
-        <!-- middle column: video -->
+        <!-- Video + subtitles -->
         <div class="md:col-span-2 space-y-4">
           <div class="rounded bg-black p-3">
             <video id="player" controls class="w-full rounded bg-black" crossorigin="anonymous"></video>
           </div>
-
           <div class="rounded bg-[var(--panel)] p-3">
             <div class="flex items-center justify-between mb-2">
               <div class="text-sm text-[var(--muted)]">Live Subtitles</div>
               <div id="subtitleTime" class="text-xs text-[var(--muted)]">00:00:00</div>
             </div>
-
             <div id="subtitles" class="min-h-[120px] text-white subtitle space-y-2"></div>
           </div>
         </div>
       </div>
-
     </div>
 
-    <!-- Footer -->
     <footer class="mt-6 text-xs text-[var(--muted)] text-center">
       FuYus • local transcription — no server required.
     </footer>
